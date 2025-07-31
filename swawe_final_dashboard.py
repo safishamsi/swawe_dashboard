@@ -168,14 +168,14 @@ page = st.sidebar.selectbox("Choose a section:",
     ["Executive Dashboard", "Sales Analytics", "Product Intelligence", "Data Management"])
 
 def fetch_all_orders():
-    """Fetch ALL orders without any restrictions"""
+    """Fetch ALL orders using proper Shopify pagination"""
     if not shopify_connected:
         return []
         
     all_orders = []
     headers = {"X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN}
     
-    # First, get the total count
+    # Get total count first
     count_url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders/count.json?status=any"
     count_response = requests.get(count_url, headers=headers)
     
@@ -183,18 +183,16 @@ def fetch_all_orders():
         total_orders = count_response.json().get("count", 0)
         st.info(f"Found {total_orders} total orders in your store")
         
-        # Calculate pages needed
-        pages_needed = (total_orders + 249) // 250
-        
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # Fetch all pages
-        for page_num in range(pages_needed):
-            status_text.text(f"Fetching page {page_num + 1} of {pages_needed} ({len(all_orders)} orders so far)...")
-            
-            # Use limit and page-based pagination for complete coverage
-            url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any&page={page_num + 1}"
+        # Start with first batch
+        url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any"
+        page_count = 0
+        
+        while url:
+            page_count += 1
+            status_text.text(f"Fetching batch {page_count}... ({len(all_orders)} orders loaded)")
             
             try:
                 response = requests.get(url, headers=headers)
@@ -203,24 +201,31 @@ def fetch_all_orders():
                     if not page_orders:
                         break
                     
-                    # Add orders, avoiding duplicates
-                    existing_ids = {order['id'] for order in all_orders}
-                    new_orders = [order for order in page_orders if order['id'] not in existing_ids]
-                    all_orders.extend(new_orders)
+                    all_orders.extend(page_orders)
+                    progress_bar.progress(min(len(all_orders) / total_orders, 0.99))
                     
-                    progress_bar.progress((page_num + 1) / pages_needed)
-                    time.sleep(0.5)  # Rate limiting
+                    # Get next page URL from Link header
+                    link_header = response.headers.get('Link', '')
+                    url = None
+                    if 'rel="next"' in link_header:
+                        # Extract next URL from Link header
+                        for link in link_header.split(','):
+                            if 'rel="next"' in link:
+                                url = link.split(';')[0].strip('<> ')
+                                break
+                    
+                    time.sleep(0.5)
                 else:
-                    st.error(f"API Error on page {page_num + 1}: {response.status_code}")
+                    st.error(f"API Error: {response.status_code} - {response.text}")
                     break
             except Exception as e:
-                st.error(f"Error on page {page_num + 1}: {e}")
+                st.error(f"Error: {e}")
                 break
         
         progress_bar.empty()
         status_text.empty()
         
-        # Show order range for verification
+        # Show order range
         order_numbers = []
         for order in all_orders:
             order_name = order.get('name', '')
@@ -233,12 +238,11 @@ def fetch_all_orders():
         if order_numbers:
             min_order = min(order_numbers)
             max_order = max(order_numbers)
-            st.success(f"✅ Fetched {len(all_orders)} orders (Range: #{min_order} to #{max_order})")
+            st.success(f"✅ Successfully loaded {len(all_orders)} orders (#{min_order} to #{max_order})")
         else:
-            st.success(f"✅ Fetched {len(all_orders)} total orders")
+            st.success(f"✅ Successfully loaded {len(all_orders)} orders")
     
     return all_orders
-    
 def process_orders(orders):
     """Process orders ensuring no duplicates"""
     processed_sales = []
