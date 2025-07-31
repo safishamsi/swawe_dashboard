@@ -168,50 +168,74 @@ page = st.sidebar.selectbox("Choose a section:",
     ["Executive Dashboard", "Sales Analytics", "Product Intelligence", "Data Management"])
 
 def fetch_all_orders():
-    """Fetch ALL orders from the beginning of time"""
+    """Fetch ALL orders without any restrictions"""
     if not shopify_connected:
         return []
         
     all_orders = []
     headers = {"X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN}
     
-    # Start from the very beginning - no date limits
-    page = 1
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    # First, get the total count
+    count_url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders/count.json?status=any"
+    count_response = requests.get(count_url, headers=headers)
     
-    while True:
-        status_text.text(f"Fetching page {page}...")
+    if count_response.status_code == 200:
+        total_orders = count_response.json().get("count", 0)
+        st.info(f"Found {total_orders} total orders in your store")
         
-        # Use since_id for proper pagination instead of date-based
-        if page == 1:
-            url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any&order=created_at+asc"
-        else:
-            # Get orders after the last order ID we fetched
-            last_order_id = all_orders[-1]['id']
-            url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any&since_id={last_order_id}&order=created_at+asc"
+        # Calculate pages needed
+        pages_needed = (total_orders + 249) // 250
         
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                page_orders = response.json().get("orders", [])
-                if not page_orders:
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Fetch all pages
+        for page_num in range(pages_needed):
+            status_text.text(f"Fetching page {page_num + 1} of {pages_needed} ({len(all_orders)} orders so far)...")
+            
+            # Use limit and page-based pagination for complete coverage
+            url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any&page={page_num + 1}"
+            
+            try:
+                response = requests.get(url, headers=headers)
+                if response.status_code == 200:
+                    page_orders = response.json().get("orders", [])
+                    if not page_orders:
+                        break
+                    
+                    # Add orders, avoiding duplicates
+                    existing_ids = {order['id'] for order in all_orders}
+                    new_orders = [order for order in page_orders if order['id'] not in existing_ids]
+                    all_orders.extend(new_orders)
+                    
+                    progress_bar.progress((page_num + 1) / pages_needed)
+                    time.sleep(0.5)  # Rate limiting
+                else:
+                    st.error(f"API Error on page {page_num + 1}: {response.status_code}")
                     break
-                
-                all_orders.extend(page_orders)
-                progress_bar.progress(min(page * 0.1, 0.9))  # Estimated progress
-                page += 1
-                time.sleep(0.5)
-            else:
-                st.error(f"API Error: {response.status_code}")
+            except Exception as e:
+                st.error(f"Error on page {page_num + 1}: {e}")
                 break
-        except Exception as e:
-            st.error(f"Error: {e}")
-            break
-    
-    progress_bar.empty()
-    status_text.empty()
-    st.success(f"Fetched {len(all_orders)} total orders!")
+        
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Show order range for verification
+        order_numbers = []
+        for order in all_orders:
+            order_name = order.get('name', '')
+            if order_name.startswith('#'):
+                try:
+                    order_numbers.append(int(order_name.replace('#', '')))
+                except:
+                    pass
+        
+        if order_numbers:
+            min_order = min(order_numbers)
+            max_order = max(order_numbers)
+            st.success(f"✅ Fetched {len(all_orders)} orders (Range: #{min_order} to #{max_order})")
+        else:
+            st.success(f"✅ Fetched {len(all_orders)} total orders")
     
     return all_orders
     
