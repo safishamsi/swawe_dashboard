@@ -14,8 +14,8 @@ st.set_page_config(
 
 # Get Shopify credentials
 try:
-    SHOPIFY_STORE_URL = st.secrets["35e5fd-d4.myshopify.com"]
-    SHOPIFY_ACCESS_TOKEN = st.secrets["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"]
+    SHOPIFY_STORE_URL = st.secrets["SHOPIFY_STORE_URL"]
+    SHOPIFY_ACCESS_TOKEN = st.secrets["SHOPIFY_ACCESS_TOKEN"]
     shopify_connected = True
 except:
     SHOPIFY_STORE_URL = ""
