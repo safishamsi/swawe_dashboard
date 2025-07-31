@@ -168,60 +168,53 @@ page = st.sidebar.selectbox("Choose a section:",
     ["Executive Dashboard", "Sales Analytics", "Product Intelligence", "Data Management"])
 
 def fetch_all_orders():
-    """Fetch all orders properly without duplicates"""
+    """Fetch ALL orders from the beginning of time"""
     if not shopify_connected:
         return []
         
     all_orders = []
     headers = {"X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN}
     
-    # Get total count first
-    count_url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders/count.json"
-    count_response = requests.get(count_url, headers=headers)
+    # Start from the very beginning - no date limits
+    page = 1
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     
-    if count_response.status_code == 200:
-        total_orders = count_response.json().get("count", 0)
-        pages_needed = (total_orders + 249) // 250
+    while True:
+        status_text.text(f"Fetching page {page}...")
         
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        # Use since_id for proper pagination instead of date-based
+        if page == 1:
+            url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any&order=created_at+asc"
+        else:
+            # Get orders after the last order ID we fetched
+            last_order_id = all_orders[-1]['id']
+            url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any&since_id={last_order_id}&order=created_at+asc"
         
-        for page in range(pages_needed):
-            status_text.text(f"Fetching page {page + 1} of {pages_needed}...")
-            
-            if page == 0:
-                url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any"
-            else:
-                last_order_date = all_orders[-1]['created_at']
-                url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any&created_at_max={last_order_date}"
-            
-            try:
-                response = requests.get(url, headers=headers)
-                if response.status_code == 200:
-                    page_orders = response.json().get("orders", [])
-                    if not page_orders:
-                        break
-                    
-                    existing_ids = {order['id'] for order in all_orders}
-                    new_orders = [order for order in page_orders if order['id'] not in existing_ids]
-                    all_orders.extend(new_orders)
-                    
-                    progress_bar.progress((page + 1) / pages_needed)
-                    if len(new_orders) == 0:
-                        break
-                    time.sleep(0.5)
-                else:
-                    st.error(f"API Error: {response.status_code}")
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                page_orders = response.json().get("orders", [])
+                if not page_orders:
                     break
-            except Exception as e:
-                st.error(f"Error: {e}")
+                
+                all_orders.extend(page_orders)
+                progress_bar.progress(min(page * 0.1, 0.9))  # Estimated progress
+                page += 1
+                time.sleep(0.5)
+            else:
+                st.error(f"API Error: {response.status_code}")
                 break
-        
-        progress_bar.empty()
-        status_text.empty()
+        except Exception as e:
+            st.error(f"Error: {e}")
+            break
+    
+    progress_bar.empty()
+    status_text.empty()
+    st.success(f"Fetched {len(all_orders)} total orders!")
     
     return all_orders
-
+    
 def process_orders(orders):
     """Process orders ensuring no duplicates"""
     processed_sales = []
