@@ -69,7 +69,8 @@ st.markdown("""
         --swawe-secondary: #1A1A2E;
         --swawe-accent: #16213E;
         --swawe-success: #00D4AA;
-        --swawe-gradient: linear-gradient(135deg, #FF6B35 0%, #F7931E 50%, #FFD23F 100%);
+        --swawe-gradient: linear-gradient(135deg, #ffffff 0%, #f8f9fa 50%, #ffffff 100%);
+        --swawe-white-gradient: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
         --swawe-dark-gradient: linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F0F23 100%);
     }
     
@@ -80,14 +81,15 @@ st.markdown("""
     
     /* Custom Header with Logo */
     .swawe-header {
-        background: var(--swawe-gradient);
+        background: var(--swawe-white-gradient);
         padding: 2rem;
         border-radius: 20px;
         margin-bottom: 2rem;
         text-align: center;
-        box-shadow: 0 20px 40px rgba(255, 107, 53, 0.3);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
         position: relative;
         overflow: hidden;
+        border: 1px solid rgba(0, 0, 0, 0.05);
     }
     
     .swawe-header::before {
@@ -97,7 +99,7 @@ st.markdown("""
         left: -50%;
         width: 200%;
         height: 200%;
-        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        background: radial-gradient(circle, rgba(255,107,53,0.05) 0%, transparent 70%);
         animation: shimmer 3s ease-in-out infinite;
     }
     
@@ -108,18 +110,18 @@ st.markdown("""
     
     .swawe-logo {
         font-family: 'Poppins', sans-serif;
-        color: white;
+        color: #1A1A2E;
         font-size: 3.5rem;
         font-weight: 900;
         margin: 0;
         letter-spacing: 3px;
-        text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+        text-shadow: 2px 2px 8px rgba(0,0,0,0.1);
         position: relative;
         z-index: 1;
     }
     
     .swawe-tagline {
-        color: rgba(255,255,255,0.95);
+        color: #666;
         font-size: 1.1rem;
         margin-top: 0.5rem;
         font-weight: 500;
@@ -258,7 +260,7 @@ st.markdown("""
     
     /* Premium Buttons */
     .stButton > button {
-        background: var(--swawe-gradient) !important;
+        background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%) !important;
         color: white !important;
         border: none !important;
         border-radius: 50px !important;
@@ -372,7 +374,7 @@ st.markdown("""
 st.markdown("""
 <div class="swawe-header">
     <img src="https://cdn.shopify.com/s/files/1/0604/9733/0266/files/bimi-svg-tiny-12-ps.svg?v=1754005795" 
-         style="height: 80px; margin-bottom: 1rem; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));" 
+         style="height: 80px; margin-bottom: 1rem; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));" 
          alt="SWAWE Logo">
     <h1 class="swawe-logo">SWAWE</h1>
     <p class="swawe-tagline">Fashion Analytics & Business Intelligence</p>
@@ -386,10 +388,84 @@ if shopify_connected:
 else:
     st.markdown('<div class="status-badge status-disconnected">⚠️ Shopify Not Connected - Add credentials in Settings</div>', unsafe_allow_html=True)
 
-# Enhanced Navigation
+# Enhanced Navigation with Profit Configuration
 page = st.sidebar.selectbox("🎯 Choose Dashboard Section:", 
     ["Executive Dashboard", "Sales Analytics", "Product Intelligence", "Data Management"],
     help="Select the analytics section you want to explore")
+
+# Profit Margin Configuration
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 💰 **Profit Configuration**")
+st.sidebar.markdown("*Adjust margins to analyze different pricing scenarios*")
+
+# Initialize default margins in session state
+if 'hoodie_base_cost' not in st.session_state:
+    st.session_state.hoodie_base_cost = 500
+if 'tshirt_base_cost' not in st.session_state:
+    st.session_state.tshirt_base_cost = 210
+if 'additional_cost' not in st.session_state:
+    st.session_state.additional_cost = 370
+
+with st.sidebar.expander("🔧 **Margin Settings**", expanded=False):
+    st.markdown("**Product Costs:**")
+    
+    hoodie_cost = st.number_input(
+        "🧥 Hoodie Base Cost (₹)", 
+        min_value=0, 
+        max_value=2000, 
+        value=st.session_state.hoodie_base_cost,
+        step=10,
+        help="Base manufacturing cost for hoodies"
+    )
+    
+    tshirt_cost = st.number_input(
+        "👕 T-Shirt Base Cost (₹)", 
+        min_value=0, 
+        max_value=1000, 
+        value=st.session_state.tshirt_base_cost,
+        step=10,
+        help="Base manufacturing cost for t-shirts"
+    )
+    
+    additional_cost = st.number_input(
+        "📦 Additional Costs (₹)", 
+        min_value=0, 
+        max_value=1000, 
+        value=st.session_state.additional_cost,
+        step=10,
+        help="Shipping, packaging, overhead costs etc."
+    )
+    
+    # Update session state when values change
+    if hoodie_cost != st.session_state.hoodie_base_cost or tshirt_cost != st.session_state.tshirt_base_cost or additional_cost != st.session_state.additional_cost:
+        st.session_state.hoodie_base_cost = hoodie_cost
+        st.session_state.tshirt_base_cost = tshirt_cost
+        st.session_state.additional_cost = additional_cost
+        
+        # Recalculate profits if data exists
+        if st.session_state.sales_data:
+            st.session_state.sales_data = recalculate_profits(st.session_state.sales_data)
+            st.success("💡 Profits recalculated!")
+    
+    # Show current margin preview
+    st.markdown("**Current Setup:**")
+    hoodie_total = hoodie_cost + additional_cost
+    tshirt_total = tshirt_cost + additional_cost
+    
+    st.markdown(f"""
+    <div style="background: rgba(255,107,53,0.1); padding: 0.75rem; border-radius: 8px; font-size: 0.85rem;">
+        🧥 <strong>Hoodie Total Cost:</strong> ₹{hoodie_total}<br>
+        👕 <strong>T-Shirt Total Cost:</strong> ₹{tshirt_total}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🔄 Reset to Defaults", help="Reset to original cost values"):
+        st.session_state.hoodie_base_cost = 500
+        st.session_state.tshirt_base_cost = 210
+        st.session_state.additional_cost = 370
+        if st.session_state.sales_data:
+            st.session_state.sales_data = recalculate_profits(st.session_state.sales_data)
+        st.rerun()
 
 # Enhanced Shopify Quick Links
 st.sidebar.markdown("---")
@@ -482,10 +558,37 @@ def fetch_all_orders():
     
     return all_orders
 
+def recalculate_profits(sales_data):
+    """Recalculate profits based on current margin settings"""
+    updated_data = []
+    
+    hoodie_total_cost = st.session_state.hoodie_base_cost + st.session_state.additional_cost
+    tshirt_total_cost = st.session_state.tshirt_base_cost + st.session_state.additional_cost
+    
+    for sale in sales_data:
+        updated_sale = sale.copy()
+        
+        # Determine total cost based on category
+        if sale['category'] == 'Hoodies':
+            updated_sale['cost_used'] = hoodie_total_cost
+        else:  # T-Shirts
+            updated_sale['cost_used'] = tshirt_total_cost
+        
+        # Recalculate profit
+        updated_sale['profit'] = sale['selling_price'] - updated_sale['cost_used']
+        
+        updated_data.append(updated_sale)
+    
+    return updated_data
+
 def process_orders(orders):
-    """Process orders ensuring no duplicates"""
+    """Process orders ensuring no duplicates with dynamic profit calculation"""
     processed_sales = []
     seen_combinations = set()
+    
+    # Get current cost settings
+    hoodie_total_cost = st.session_state.hoodie_base_cost + st.session_state.additional_cost
+    tshirt_total_cost = st.session_state.tshirt_base_cost + st.session_state.additional_cost
     
     for order in orders:
         order_name = order.get('name', 'N/A')
@@ -502,9 +605,9 @@ def process_orders(orders):
             selling_price = float(line_item.get("price", 0))
             quantity = int(line_item.get("quantity", 1))
             
+            # Determine category and use dynamic costs
             category = 'Hoodies' if 'hoodie' in item_name.lower() else 'T-Shirts'
-            base_cost = 500 if category == 'Hoodies' else 210
-            total_cost = base_cost + 370
+            total_cost = hoodie_total_cost if category == 'Hoodies' else tshirt_total_cost
             profit = selling_price - total_cost
             
             created_at = order.get("created_at", "")
@@ -628,7 +731,7 @@ if not admin_widget_view:
         if st.session_state.sales_data:
             sales_df = pd.DataFrame(st.session_state.sales_data)
             
-            # Premium Metrics
+            # Premium Metrics with Profit Analysis
             col1, col2, col3, col4 = st.columns(4)
             
             total_revenue = sales_df['selling_price'].sum()
@@ -640,11 +743,72 @@ if not admin_widget_view:
             with col1:
                 st.markdown(create_premium_metric_card("Total Revenue", f"₹{total_revenue:,.0f}"), unsafe_allow_html=True)
             with col2:
+                profit_color = "positive" if total_profit > 0 else "negative"
                 st.markdown(create_premium_metric_card("Net Profit", f"₹{total_profit:,.0f}", f"{profit_margin:.1f}% margin"), unsafe_allow_html=True)
             with col3:
                 st.markdown(create_premium_metric_card("Avg Order Value", f"₹{avg_order:.0f}"), unsafe_allow_html=True)
             with col4:
                 st.markdown(create_premium_metric_card("Total Orders", f"{unique_orders:,}"), unsafe_allow_html=True)
+            
+            # Profit Analysis by Category
+            st.markdown("#### 💰 **Profit Analysis by Category**")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                hoodie_data = sales_df[sales_df['category'] == 'Hoodies']
+                if len(hoodie_data) > 0:
+                    hoodie_profit = hoodie_data['profit'].sum()
+                    hoodie_margin = (hoodie_profit / hoodie_data['selling_price'].sum() * 100) if len(hoodie_data) > 0 else 0
+                    hoodie_avg_profit = hoodie_data['profit'].mean()
+                    
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+                            <span style="font-size: 2rem; margin-right: 0.5rem;">🧥</span>
+                            <h4 style="margin: 0; color: #FF6B35;">Hoodies Performance</h4>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Total Profit:</span><strong>₹{hoodie_profit:,.0f}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Profit Margin:</span><strong>{hoodie_margin:.1f}%</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Avg Profit/Item:</span><strong>₹{hoodie_avg_profit:.0f}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Cost Used:</span><strong>₹{st.session_state.hoodie_base_cost + st.session_state.additional_cost}</strong>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with col2:
+                tshirt_data = sales_df[sales_df['category'] == 'T-Shirts']
+                if len(tshirt_data) > 0:
+                    tshirt_profit = tshirt_data['profit'].sum()
+                    tshirt_margin = (tshirt_profit / tshirt_data['selling_price'].sum() * 100) if len(tshirt_data) > 0 else 0
+                    tshirt_avg_profit = tshirt_data['profit'].mean()
+                    
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+                            <span style="font-size: 2rem; margin-right: 0.5rem;">👕</span>
+                            <h4 style="margin: 0; color: #FF6B35;">T-Shirts Performance</h4>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Total Profit:</span><strong>₹{tshirt_profit:,.0f}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Profit Margin:</span><strong>{tshirt_margin:.1f}%</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Avg Profit/Item:</span><strong>₹{tshirt_avg_profit:.0f}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Cost Used:</span><strong>₹{st.session_state.tshirt_base_cost + st.session_state.additional_cost}</strong>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             # Premium Charts
             col1, col2 = st.columns(2)
@@ -943,7 +1107,10 @@ st.markdown("""
     border-top: 1px solid rgba(255,107,53,0.2);
     border-radius: 20px 20px 0 0;
 ">
-    <div style="color: rgba(255,255,255,0.8); font-size: 1rem; margin-bottom: 1rem;">
+    <div style="color: #666; font-size: 1rem; margin-bottom: 1rem;">
+        <img src="https://cdn.shopify.com/s/files/1/0604/9733/0266/files/bimi-svg-tiny-12-ps.svg?v=1754005795" 
+             style="height: 24px; margin-right: 10px; vertical-align: middle;" 
+             alt="SWAWE Logo">
         <strong style="color: #FF6B35;">SWAWE</strong> Dashboard | Fashion Analytics & Business Intelligence
     </div>
     <div style="color: rgba(255,255,255,0.6); font-size: 0.9rem;">
