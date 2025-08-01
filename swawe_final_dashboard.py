@@ -110,7 +110,7 @@ st.markdown("""
     
     .swawe-logo {
         font-family: 'Poppins', sans-serif;
-        color: #000000;
+        color: #000000 !important;
         font-size: 3.5rem;
         font-weight: 900;
         margin: 0;
@@ -121,7 +121,7 @@ st.markdown("""
     }
     
     .swawe-tagline {
-        color: #666;
+        color: #666 !important;
         font-size: 1.1rem;
         margin-top: 0.5rem;
         font-weight: 500;
