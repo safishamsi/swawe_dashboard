@@ -486,6 +486,32 @@ else:
 st.sidebar.markdown("---")
 admin_widget_view = st.sidebar.checkbox("🎛️ **Compact Widget View**", help="Switch to a condensed dashboard view for quick insights")
 
+def calculate_unfulfilled_revenue(orders):
+    """Calculate revenue from unfulfilled but paid orders"""
+    unfulfilled_revenue = 0
+    unfulfilled_count = 0
+    unfulfilled_orders_list = []
+    
+    for order in orders:
+        fulfillment_status = order.get('fulfillment_status', 'unfulfilled')
+        financial_status = order.get('financial_status', 'pending')
+        
+        # Only count orders that are paid but not fulfilled
+        if fulfillment_status != 'fulfilled' and financial_status == 'paid':
+            order_total = float(order.get('total_price', 0))
+            unfulfilled_revenue += order_total
+            unfulfilled_count += 1
+            
+            unfulfilled_orders_list.append({
+                'order_name': order.get('name', 'N/A'),
+                'total_price': order_total,
+                'customer_email': order.get('email', 'N/A'),
+                'created_at': order.get('created_at', ''),
+                'line_items': len(order.get('line_items', []))
+            })
+    
+    return unfulfilled_revenue, unfulfilled_count, unfulfilled_orders_list
+
 def fetch_all_orders():
     """Fetch ALL orders using proper Shopify pagination"""
     if not shopify_connected:
@@ -539,6 +565,15 @@ def fetch_all_orders():
         
         progress_bar.empty()
         status_text.empty()
+        
+        # Calculate unfulfilled revenue
+        if all_orders:
+            unfulfilled_revenue, unfulfilled_count, unfulfilled_list = calculate_unfulfilled_revenue(all_orders)
+            
+            # Store in session state
+            st.session_state.unfulfilled_revenue = unfulfilled_revenue
+            st.session_state.unfulfilled_count = unfulfilled_count
+            st.session_state.unfulfilled_orders = unfulfilled_list
         
         order_numbers = []
         for order in all_orders:
@@ -749,6 +784,97 @@ if not admin_widget_view:
                 st.markdown(create_premium_metric_card("Avg Order Value", f"₹{avg_order:.0f}"), unsafe_allow_html=True)
             with col4:
                 st.markdown(create_premium_metric_card("Total Orders", f"{unique_orders:,}"), unsafe_allow_html=True)
+            
+            # Cash Flow Pipeline Section
+            if hasattr(st.session_state, 'unfulfilled_revenue'):
+                st.markdown("### 💰 **Cash Flow Pipeline**")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    unfulfilled_revenue = getattr(st.session_state, 'unfulfilled_revenue', 0)
+                    st.markdown(create_premium_metric_card(
+                        "💵 Money to Collect", 
+                        f"₹{unfulfilled_revenue:,.0f}",
+                        "From unfulfilled paid orders"
+                    ), unsafe_allow_html=True)
+                
+                with col2:
+                    unfulfilled_count = getattr(st.session_state, 'unfulfilled_count', 0)
+                    st.markdown(create_premium_metric_card(
+                        "📦 Orders to Ship", 
+                        f"{unfulfilled_count:,}",
+                        "Paid orders awaiting fulfillment"
+                    ), unsafe_allow_html=True)
+                
+                with col3:
+                    # Calculate average value of unfulfilled orders
+                    avg_unfulfilled = unfulfilled_revenue / unfulfilled_count if unfulfilled_count > 0 else 0
+                    st.markdown(create_premium_metric_card(
+                        "📊 Avg Unfulfilled Value", 
+                        f"₹{avg_unfulfilled:.0f}",
+                        "Average order value pending"
+                    ), unsafe_allow_html=True)
+
+                # Add a detailed unfulfilled orders table
+                if hasattr(st.session_state, 'unfulfilled_orders') and st.session_state.unfulfilled_orders:
+                    st.markdown("#### 🚨 **Priority Orders to Fulfill**")
+                    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                    
+                    unfulfilled_df = pd.DataFrame(st.session_state.unfulfilled_orders)
+                    unfulfilled_df['created_at'] = pd.to_datetime(unfulfilled_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+                    unfulfilled_df = unfulfilled_df.sort_values('total_price', ascending=False)
+                    
+                    # Style the dataframe for better visibility
+                    styled_df = unfulfilled_df.rename(columns={
+                        'order_name': '🛍️ Order',
+                        'total_price': '💰 Value (₹)',
+                        'customer_email': '👤 Customer',
+                        'created_at': '📅 Order Date',
+                        'line_items': '📦 Items'
+                    })
+                    
+                    st.dataframe(
+                        styled_df,
+                        use_container_width=True,
+                        height=300,
+                        hide_index=True
+                    )
+                    
+                    # Add quick action buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("🚀 Go to Shopify Orders", type="primary", use_container_width=True):
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url=https://{SHOPIFY_STORE_URL}/admin/orders?status=unfulfilled">', unsafe_allow_html=True)
+                    
+                    with col2:
+                        if st.button("📧 Export Unfulfilled List", use_container_width=True):
+                            csv = styled_df.to_csv(index=False)
+                            st.download_button(
+                                label="💾 Download CSV",
+                                data=csv,
+                                file_name=f"swawe_unfulfilled_orders_{datetime.now().strftime('%Y%m%d')}.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Add a cash flow insight
+                if unfulfilled_revenue > 0:
+                    total_revenue = pd.DataFrame(st.session_state.sales_data)['selling_price'].sum()
+                    pipeline_percentage = (unfulfilled_revenue / total_revenue * 100) if total_revenue > 0 else 0
+                    
+                    st.markdown(f"""
+                    <div class="insight-card">
+                        <h4 style="color: #FF6B35; margin-bottom: 1rem; font-size: 1.2rem;">💡 Cash Flow Insight</h4>
+                        <p style="color: rgba(255,255,255,0.9); line-height: 1.6; font-size: 1rem;">
+                        You have <strong>₹{unfulfilled_revenue:,.0f}</strong> in revenue waiting to be collected from {unfulfilled_count} unfulfilled orders. 
+                        This represents <strong>{pipeline_percentage:.1f}%</strong> of your total revenue pipeline. 
+                        Fulfilling these orders will immediately improve your cash flow.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             # Profit Analysis by Category
             st.markdown("#### 💰 **Profit Analysis by Category**")
