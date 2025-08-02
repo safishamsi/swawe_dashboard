@@ -1,128 +1,4 @@
-if st.session_state.sales_data:
-            # Apply date filtering
-            filtered_sales = filter_sales_by_date(st.session_state.sales_data)
-            
-            if filtered_sales:
-                sales_df = pd.DataFrame(filtered_sales)
-                
-                # Get comparison data
-                comparison_data = get_date_comparison_metrics(sales_df)
-                
-                # Show date range info
-                total_days = (st.session_state.date_range_end - st.session_state.date_range_start).days
-                st.info(f"📅 Showing data for **{st.session_state.date_range_start.strftime('%B %d, %Y')}** to **{st.session_state.date_range_end.strftime('%B %d, %Y')}** ({total_days} days)")
-                
-                # Premium Metrics with Period Comparison
-                col1, col2, col3, col4 = st.columns(4)
-                
-                total_revenue = sales_df['selling_price'].sum()
-                total_profit = sales_df['profit'].sum()
-                profit_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
-                unique_orders = sales_df['order_name'].nunique()
-                avg_order = sales_df['selling_price'].mean()
-                
-                with col1:
-                    st.markdown(create_premium_metric_card_with_comparison("Total Revenue", f"₹{total_revenue:,.0f}", comparison_data, "revenue_change"), unsafe_allow_html=True)
-                with col2:
-                    st.markdown(create_premium_metric_card_with_comparison("Net Profit", f"₹{total_profit:,.0f}", comparison_data, "profit_change"), unsafe_allow_html=True)
-                with col3:
-                    st.markdown(create_premium_metric_card("Avg Order Value", f"₹{avg_order:.0f}"), unsafe_allow_html=True)
-                with col4:
-                    st.markdown(create_premium_metric_card_with_comparison("Total Orders", f"{unique_orders:,}", comparison_data, "orders_change"), unsafe_allow_html=True)
-                
-                # Period Comparison Summary
-                if comparison_data:
-                    st.markdown("#### 📊 **Period Comparison**")
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        revenue_trend = "📈" if comparison_data['revenue_change'] > 0 else "📉" if comparison_data['revenue_change'] < 0 else "➡️"
-                        st.markdown(f"""
-                        <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 10px; text-align: center;">
-                            <div style="font-size: 2rem;">{revenue_trend}</div>
-                            <div style="color: #FF6B35; font-weight: bold;">Revenue Trend</div>
-                            <div style="font-size: 0.9rem; color: #666;">vs previous {total_days} days</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col3:
-                        profit_trend = "📈" if comparison_data['profit_change'] > 0 else "📉" if comparison_data['profit_change'] < 0 else "➡️"
-                        st.markdown(f"""
-                        <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 10px; text-align: center;">
-                            <div style="font-size: 2rem;">{profit_trend}</div>
-                            <div style="color: #FF6B35; font-weight: bold;">Profit Trend</div>
-                            <div style="font-size: 0.9rem; color: #666;">vs previous {total_days} days</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                # Premium Metrics with Profit Analysis
-                st.markdown("#### 💰 **Profit Analysis by Category**")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    hoodie_data = sales_df[sales_df['category'] == 'Hoodies']
-                    if len(hoodie_data) > 0:
-                        hoodie_profit = hoodie_data['profit'].sum()
-                        hoodie_margin = (hoodie_profit / hoodie_data['selling_price'].sum() * 100) if len(hoodie_data) > 0 else 0
-                        hoodie_avg_profit = hoodie_data['profit'].mean()
-                        
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div style="display: flex; align-items: center; margin-bottom: 1rem;">
-                                <span style="font-size: 2rem; margin-right: 0.5rem;">🧥</span>
-                                <h4 style="margin: 0; color: #FF6B35;">Hoodies Performance</h4>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span>Total Profit:</span><strong>₹{hoodie_profit:,.0f}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span>Profit Margin:</span><strong>{hoodie_margin:.1f}%</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span>Avg Profit/Item:</span><strong>₹{hoodie_avg_profit:.0f}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span>Units Sold:</span><strong>{len(hoodie_data):,}</strong>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                with col2:
-                    tshirt_data = sales_df[sales_df['category'] == 'T-Shirts']
-                    if len(tshirt_data) > 0:
-                        tshirt_profit = tshirt_data['profit'].sum()
-                        tshirt_margin = (tshirt_profit / tshirt_data['selling_price'].sum() * 100) if len(tshirt_data) > 0 else 0
-                        tshirt_avg_profit = tshirt_data['profit'].mean()
-                        
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div style="display: flex; align-items: center; margin-bottom: 1rem;">
-                                <span style="font-size: 2rem; margin-right: 0.5rem;">👕</span>
-                                <h4 style="margin: 0; color: #FF6B35;">T-Shirts Performance</h4>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span>Total Profit:</span><strong>₹{tshirt_profit:,.0f}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span>Profit Margin:</span><strong>{tshirt_margin:.1f}%</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span>Avg Profit/Item:</span><strong>₹{tshirt_avg_profit:.0f}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span>Units Sold:</span><strong>{len(tshirt_data):,}</strong>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col2:
-                        orders_trend = "📈" if comparison_data['orders_change'] > 0 else "📉" if comparison_data['orders_change'] < 0 else "➡️"
-                        st.markdown(f"""
-                        <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 10px; text-align: center;">
-                            <div style="font-size: 2rem;">{orders_trend}</div>
-                            <div style="color: #FF6B35; font-weight: bold;">Orders Trend</div>
-                            <div style="font-size: 0.9rem; color: #666;">vs previous {total_days} days</div>
-                import streamlit as st
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -512,75 +388,10 @@ if shopify_connected:
 else:
     st.markdown('<div class="status-badge status-disconnected">⚠️ Shopify Not Connected - Add credentials in Settings</div>', unsafe_allow_html=True)
 
-# Enhanced Navigation with Date Filtering
+# Enhanced Navigation with Profit Configuration
 page = st.sidebar.selectbox("🎯 Choose Dashboard Section:", 
     ["Executive Dashboard", "Sales Analytics", "Product Intelligence", "Data Management"],
     help="Select the analytics section you want to explore")
-
-# Advanced Date Range Filtering
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📅 **Date Range Filter**")
-st.sidebar.markdown("*Analyze specific time periods*")
-
-# Initialize date range in session state
-if 'date_range_start' not in st.session_state:
-    st.session_state.date_range_start = datetime.now() - timedelta(days=30)
-if 'date_range_end' not in st.session_state:
-    st.session_state.date_range_end = datetime.now()
-
-# Quick date range buttons
-st.sidebar.markdown("**Quick Filters:**")
-col1, col2 = st.sidebar.columns(2)
-
-with col1:
-    if st.button("📊 Last 7 Days", use_container_width=True):
-        st.session_state.date_range_start = datetime.now() - timedelta(days=7)
-        st.session_state.date_range_end = datetime.now()
-        st.rerun()
-    
-    if st.button("📈 Last 30 Days", use_container_width=True):
-        st.session_state.date_range_start = datetime.now() - timedelta(days=30)
-        st.session_state.date_range_end = datetime.now()
-        st.rerun()
-
-with col2:
-    if st.button("📉 Last 90 Days", use_container_width=True):
-        st.session_state.date_range_start = datetime.now() - timedelta(days=90)
-        st.session_state.date_range_end = datetime.now()
-        st.rerun()
-    
-    if st.button("🗓️ This Year", use_container_width=True):
-        st.session_state.date_range_start = datetime(datetime.now().year, 1, 1)
-        st.session_state.date_range_end = datetime.now()
-        st.rerun()
-
-# Custom date range picker
-st.sidebar.markdown("**Custom Range:**")
-date_range = st.sidebar.date_input(
-    "Select Custom Date Range",
-    value=(st.session_state.date_range_start.date(), st.session_state.date_range_end.date()),
-    help="Choose start and end dates for analysis"
-)
-
-# Update session state if dates changed
-if len(date_range) == 2:
-    new_start = datetime.combine(date_range[0], datetime.min.time())
-    new_end = datetime.combine(date_range[1], datetime.max.time())
-    
-    if new_start != st.session_state.date_range_start or new_end != st.session_state.date_range_end:
-        st.session_state.date_range_start = new_start
-        st.session_state.date_range_end = new_end
-        st.rerun()
-
-# Show selected range info
-total_days = (st.session_state.date_range_end - st.session_state.date_range_start).days
-st.sidebar.markdown(f"""
-<div style="background: rgba(255,107,53,0.1); padding: 0.75rem; border-radius: 8px; font-size: 0.85rem; margin-top: 0.5rem;">
-    📅 <strong>Selected Range:</strong><br>
-    {st.session_state.date_range_start.strftime('%b %d, %Y')} - {st.session_state.date_range_end.strftime('%b %d, %Y')}<br>
-    <strong>{total_days} days</strong> of data
-</div>
-""", unsafe_allow_html=True)
 
 # Profit Margin Configuration
 st.sidebar.markdown("---")
@@ -748,114 +559,6 @@ def fetch_all_orders():
     return all_orders
 
 def recalculate_profits(sales_data):
-    """Recalculate profits based on current margin settings"""
-    updated_data = []
-    
-    hoodie_total_cost = st.session_state.hoodie_base_cost + st.session_state.additional_cost
-    tshirt_total_cost = st.session_state.tshirt_base_cost + st.session_state.additional_cost
-    
-    for sale in sales_data:
-        updated_sale = sale.copy()
-        
-        # Determine total cost based on category
-        if sale['category'] == 'Hoodies':
-            updated_sale['cost_used'] = hoodie_total_cost
-        else:  # T-Shirts
-            updated_sale['cost_used'] = tshirt_total_cost
-        
-        # Recalculate profit
-        updated_sale['profit'] = sale['selling_price'] - updated_sale['cost_used']
-        
-        updated_data.append(updated_sale)
-    
-    return updated_data
-
-def create_premium_metric_card_with_comparison(label, value, comparison_data=None, metric_key=None):
-    """Create metric card with period comparison"""
-    delta_html = ""
-    
-    if comparison_data and metric_key and metric_key in comparison_data:
-        change = comparison_data[metric_key]
-        if change > 0:
-            delta_html = f'<div class="metric-delta" style="color: #00D4AA;">↗ +{change:.1f}% vs prev period</div>'
-        elif change < 0:
-            delta_html = f'<div class="metric-delta" style="color: #FF6B6B;">↘ {change:.1f}% vs prev period</div>'
-        else:
-            delta_html = f'<div class="metric-delta" style="color: #666;">→ No change vs prev period</div>'
-    
-    return f"""
-    <div class="metric-card">
-        <div class="metric-value">{value}</div>
-        <div class="metric-label">{label}</div>
-        {delta_html}
-    </div>
-    """
-    """Filter sales data by selected date range"""
-    if not sales_data:
-        return []
-    
-    filtered_data = []
-    start_date = st.session_state.date_range_start.date()
-    end_date = st.session_state.date_range_end.date()
-    
-    for sale in sales_data:
-        try:
-            sale_date = datetime.strptime(sale['date'], '%Y-%m-%d').date()
-            if start_date <= sale_date <= end_date:
-                filtered_data.append(sale)
-        except:
-            # If date parsing fails, include the record
-            filtered_data.append(sale)
-    
-    return filtered_data
-
-def get_date_comparison_metrics(sales_df):
-    """Get comparison metrics for selected vs previous period"""
-    if sales_df.empty:
-        return None
-    
-    # Current period metrics
-    current_revenue = sales_df['selling_price'].sum()
-    current_orders = sales_df['order_name'].nunique()
-    current_profit = sales_df['profit'].sum()
-    
-    # Calculate previous period (same length as current period)
-    current_days = (st.session_state.date_range_end - st.session_state.date_range_start).days
-    previous_start = st.session_state.date_range_start - timedelta(days=current_days)
-    previous_end = st.session_state.date_range_start - timedelta(days=1)
-    
-    # Filter data for previous period
-    previous_data = []
-    if st.session_state.sales_data:
-        for sale in st.session_state.sales_data:
-            try:
-                sale_date = datetime.strptime(sale['date'], '%Y-%m-%d').date()
-                if previous_start.date() <= sale_date <= previous_end.date():
-                    previous_data.append(sale)
-            except:
-                continue
-    
-    if previous_data:
-        previous_df = pd.DataFrame(previous_data)
-        previous_revenue = previous_df['selling_price'].sum()
-        previous_orders = previous_df['order_name'].nunique()
-        previous_profit = previous_df['profit'].sum()
-        
-        # Calculate changes
-        revenue_change = ((current_revenue - previous_revenue) / previous_revenue * 100) if previous_revenue > 0 else 0
-        orders_change = ((current_orders - previous_orders) / previous_orders * 100) if previous_orders > 0 else 0
-        profit_change = ((current_profit - previous_profit) / previous_profit * 100) if previous_profit > 0 else 0
-        
-        return {
-            'revenue_change': revenue_change,
-            'orders_change': orders_change,
-            'profit_change': profit_change,
-            'previous_revenue': previous_revenue,
-            'previous_orders': previous_orders,
-            'previous_profit': previous_profit
-        }
-    
-    return None
     """Recalculate profits based on current margin settings"""
     updated_data = []
     
@@ -1047,9 +750,9 @@ if not admin_widget_view:
             with col4:
                 st.markdown(create_premium_metric_card("Total Orders", f"{unique_orders:,}"), unsafe_allow_html=True)
             
-            else:
-                st.warning(f"📅 No data found for the selected date range: {st.session_state.date_range_start.strftime('%B %d, %Y')} - {st.session_state.date_range_end.strftime('%B %d, %Y')}")
-                st.info("💡 Try selecting a different date range or refresh your data from Shopify.")
+            # Profit Analysis by Category
+            st.markdown("#### 💰 **Profit Analysis by Category**")
+            col1, col2 = st.columns(2)
             
             with col1:
                 hoodie_data = sales_df[sales_df['category'] == 'Hoodies']
@@ -1206,40 +909,69 @@ if not admin_widget_view:
         st.markdown("### 📊 **Sales Analytics & Insights**")
         
         if st.session_state.sales_data:
-            # Apply date filtering
-            filtered_sales = filter_sales_by_date(st.session_state.sales_data)
+            sales_df = pd.DataFrame(st.session_state.sales_data)
             
-            if filtered_sales:
-                sales_df = pd.DataFrame(filtered_sales)
-                
-                # Date range info
-                total_days = (st.session_state.date_range_end - st.session_state.date_range_start).days
-                st.info(f"📅 Analyzing **{total_days} days** of sales data")
-                
-                # Sales Performance Overview
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    daily_avg = sales_df.groupby(pd.to_datetime(sales_df['date']).dt.date)['selling_price'].sum().mean()
-                    st.metric("📈 Daily Avg Revenue", f"₹{daily_avg:,.0f}")
-                with col2:
-                    best_day_revenue = sales_df.groupby('date')['selling_price'].sum().max()
-                    st.metric("🏆 Best Day Revenue", f"₹{best_day_revenue:,.0f}")
-                with col3:
-                    total_items = sales_df['quantity'].sum()
-                    st.metric("📦 Items Sold", f"{total_items:,}")
-                
+            # Sales Performance Overview
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                daily_avg = sales_df.groupby(pd.to_datetime(sales_df['date']).dt.date)['selling_price'].sum().mean()
+                st.metric("📈 Daily Avg Revenue", f"₹{daily_avg:,.0f}")
+            with col2:
+                best_day = sales_df.groupby('date')['selling_price'].sum().max()
+                st.metric("🏆 Best Day Revenue", f"₹{best_day:,.0f}")
+            with col3:
+                growth_rate = 15.2  # Calculate actual growth rate
+                st.metric("📊 Growth Rate", f"{growth_rate}%", delta="2.3%")
+            
+            st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+            sales_df['date'] = pd.to_datetime(sales_df['date'])
+            daily_sales = sales_df.groupby('date').agg({
+                'selling_price': 'sum',
+                'profit': 'sum',
+                'quantity': 'sum'
+            }).reset_index()
+            
+            fig = px.line(daily_sales, x='date', y='selling_price', 
+                         title="📈 Daily Sales Performance", 
+                         color_discrete_sequence=['#FF6B35'])
+            fig.update_traces(line=dict(width=4), marker=dict(size=8))
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='white', size=12),
+                title_font_size=16
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Product Analysis
+            col1, col2 = st.columns(2)
+            with col1:
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                sales_df['date'] = pd.to_datetime(sales_df['date'])
-                daily_sales = sales_df.groupby('date').agg({
+                product_sales = sales_df.groupby('item_name').agg({
                     'selling_price': 'sum',
-                    'profit': 'sum',
                     'quantity': 'sum'
-                }).reset_index()
+                }).sort_values('selling_price', ascending=False).head(10)
                 
-                fig = px.line(daily_sales, x='date', y='selling_price', 
-                             title=f"📈 Daily Sales Trend ({st.session_state.date_range_start.strftime('%b %d')} - {st.session_state.date_range_end.strftime('%b %d')})", 
-                             color_discrete_sequence=['#FF6B35'])
-                fig.update_traces(line=dict(width=4), marker=dict(size=8))
+                fig = px.bar(product_sales, x=product_sales.index, y='selling_price',
+                            title="🏆 Top 10 Products by Revenue",
+                            color_discrete_sequence=['#FF6B35'])
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='white', size=12),
+                    title_font_size=16,
+                    xaxis_tickangle=-45
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                category_profit = sales_df.groupby('category')['profit'].sum()
+                fig = px.pie(values=category_profit.values, names=category_profit.index,
+                            title="💰 Profit Distribution by Category",
+                            color_discrete_sequence=['#FF6B35', '#00D4AA'])
                 fig.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
@@ -1248,47 +980,8 @@ if not admin_widget_view:
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Product Analysis for date range
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    product_sales = sales_df.groupby('item_name').agg({
-                        'selling_price': 'sum',
-                        'quantity': 'sum'
-                    }).sort_values('selling_price', ascending=False).head(10)
-                    
-                    fig = px.bar(product_sales, x=product_sales.index, y='selling_price',
-                                title="🏆 Top Products in Selected Period",
-                                color_discrete_sequence=['#FF6B35'])
-                    fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font=dict(color='white', size=12),
-                        title_font_size=16,
-                        xaxis_tickangle=-45
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with col2:
-                    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    category_profit = sales_df.groupby('category')['profit'].sum()
-                    fig = px.pie(values=category_profit.values, names=category_profit.index,
-                                title="💰 Profit Distribution (Selected Period)",
-                                color_discrete_sequence=['#FF6B35', '#00D4AA'])
-                    fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font=dict(color='white', size=12),
-                        title_font_size=16
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.warning("📅 No sales data found for the selected date range.")
         else:
-            st.info("🔍 Load data from Executive Dashboard first to see analytics.")
+            st.info("🔍 Load data from Executive Dashboard first to see detailed analytics.")
 
     elif page == "Product Intelligence":
         st.markdown("### 🛍️ **Product Intelligence**")
