@@ -492,12 +492,34 @@ def calculate_unfulfilled_revenue(orders):
     unfulfilled_count = 0
     unfulfilled_orders_list = []
     
+    # Debug info
+    fulfillment_statuses = set()
+    financial_statuses = set()
+    
     for order in orders:
-        fulfillment_status = order.get('fulfillment_status', 'unfulfilled')
-        financial_status = order.get('financial_status', 'pending')
+        fulfillment_status = order.get('fulfillment_status')
+        financial_status = order.get('financial_status')
         
-        # Only count orders that are paid but not fulfilled
-        if fulfillment_status != 'fulfilled' and financial_status == 'paid':
+        # Collect all status types for debugging
+        fulfillment_statuses.add(fulfillment_status)
+        financial_statuses.add(financial_status)
+        
+        # More comprehensive unfulfilled logic
+        is_unfulfilled = (
+            fulfillment_status is None or 
+            fulfillment_status == 'unfulfilled' or 
+            fulfillment_status == 'partial' or
+            fulfillment_status == ''
+        )
+        
+        is_paid = (
+            financial_status == 'paid' or 
+            financial_status == 'partially_paid' or
+            financial_status == 'authorized'
+        )
+        
+        # Count orders that need fulfillment and have payment
+        if is_unfulfilled and is_paid:
             order_total = float(order.get('total_price', 0))
             unfulfilled_revenue += order_total
             unfulfilled_count += 1
@@ -507,8 +529,15 @@ def calculate_unfulfilled_revenue(orders):
                 'total_price': order_total,
                 'customer_email': order.get('email', 'N/A'),
                 'created_at': order.get('created_at', ''),
-                'line_items': len(order.get('line_items', []))
+                'line_items': len(order.get('line_items', [])),
+                'fulfillment_status': fulfillment_status,
+                'financial_status': financial_status
             })
+    
+    # Show debug info
+    st.info(f"🔍 Debug: Found fulfillment statuses: {fulfillment_statuses}")
+    st.info(f"💳 Debug: Found financial statuses: {financial_statuses}")
+    st.info(f"📊 Debug: Identified {unfulfilled_count} unfulfilled orders with revenue ₹{unfulfilled_revenue:,.0f}")
     
     return unfulfilled_revenue, unfulfilled_count, unfulfilled_orders_list
 
