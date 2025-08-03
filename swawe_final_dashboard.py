@@ -60,17 +60,6 @@ def check_for_new_orders():
 
 def calculate_unfulfilled_revenue(orders):
     """Calculate revenue from orders to fulfill and payments to capture"""
-    
-    # SHOW DEBUGGING INFO PROMINENTLY
-    st.error("🔍 **DEBUGGING: First 3 orders from API:**")
-    for i, order in enumerate(orders[:3]):
-        st.error(f"**Order {i+1}:**")
-        st.error(f"Name: {order.get('name')}")
-        st.error(f"fulfillment_status: {order.get('fulfillment_status')}")  
-        st.error(f"financial_status: {order.get('financial_status')}")
-        st.error(f"Keys available: {list(order.keys())[:10]}...")  # Show first 10 keys
-        st.error("---")
-    
     orders_to_fulfill_revenue = 0  
     payments_to_capture_revenue = 0  
     orders_to_fulfill_count = 0
@@ -79,43 +68,53 @@ def calculate_unfulfilled_revenue(orders):
     orders_to_fulfill_list = []
     payments_to_capture_list = []
     
-    # Count different status combinations
-    status_counts = {}
-    
     for order in orders:
         fulfillment_status = order.get('fulfillment_status')
         financial_status = order.get('financial_status')
-        
-        # Count status combinations
-        combo = f"{fulfillment_status}|{financial_status}"
-        status_counts[combo] = status_counts.get(combo, 0) + 1
-        
         order_total = float(order.get('total_price', 0))
         
-        # For now, put everything in fulfill to see total
-        orders_to_fulfill_revenue += order_total
-        orders_to_fulfill_count += 1
+        # Based on Shopify standard logic:
+        # Orders to fulfill = fulfillment_status is null OR unfulfilled
+        # Payments to capture = fulfillment_status is fulfilled AND financial_status is NOT paid
         
-        orders_to_fulfill_list.append({
-            'order_name': order.get('name', 'N/A'),
-            'total_price': order_total,
-            'customer_email': order.get('email', 'N/A'),
-            'created_at': order.get('created_at', ''),
-            'line_items': len(order.get('line_items', [])),
-            'fulfillment_status': fulfillment_status,
-            'financial_status': financial_status,
-            'status_type': 'To Fulfill'
-        })
+        if fulfillment_status is None or fulfillment_status == 'unfulfilled':
+            # This is an order that needs to be fulfilled
+            orders_to_fulfill_revenue += order_total
+            orders_to_fulfill_count += 1
+            
+            payment_status = 'Paid' if financial_status == 'paid' else 'Payment Pending'
+            
+            orders_to_fulfill_list.append({
+                'order_name': order.get('name', 'N/A'),
+                'total_price': order_total,
+                'customer_email': order.get('email', 'N/A'),
+                'created_at': order.get('created_at', ''),
+                'line_items': len(order.get('line_items', [])),
+                'fulfillment_status': fulfillment_status,
+                'financial_status': financial_status,
+                'status_type': f'To Fulfill ({payment_status})'
+            })
+            
+        elif fulfillment_status == 'fulfilled' and financial_status != 'paid':
+            # This is a fulfilled order but payment not captured
+            payments_to_capture_revenue += order_total
+            payments_to_capture_count += 1
+            
+            payments_to_capture_list.append({
+                'order_name': order.get('name', 'N/A'),
+                'total_price': order_total,
+                'customer_email': order.get('email', 'N/A'),
+                'created_at': order.get('created_at', ''),
+                'line_items': len(order.get('line_items', [])),
+                'fulfillment_status': fulfillment_status,
+                'financial_status': financial_status,
+                'status_type': 'Payment to Capture'
+            })
     
-    # Show status combinations
-    st.error("📊 **STATUS COMBINATIONS:**")
-    for combo, count in sorted(status_counts.items(), key=lambda x: x[1], reverse=True):
-        st.error(f"{combo}: {count} orders")
-    
-    # Return data
-    all_pending_orders = orders_to_fulfill_list
-    total_revenue = orders_to_fulfill_revenue
-    total_count = orders_to_fulfill_count
+    # Combine both lists
+    all_pending_orders = orders_to_fulfill_list + payments_to_capture_list
+    total_revenue = orders_to_fulfill_revenue + payments_to_capture_revenue
+    total_count = orders_to_fulfill_count + payments_to_capture_count
     
     return (total_revenue, total_count, all_pending_orders, 
             orders_to_fulfill_revenue, orders_to_fulfill_count,
