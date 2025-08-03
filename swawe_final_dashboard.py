@@ -861,11 +861,18 @@ if not admin_widget_view:
             if hasattr(st.session_state, 'total_pending_revenue'):
                 st.markdown("### 💰 **Cash Flow Pipeline**")
                 
+                # Get the actual values from session state
+                fulfill_count = getattr(st.session_state, 'orders_to_fulfill_count', 0)
+                fulfill_revenue = getattr(st.session_state, 'orders_to_fulfill_revenue', 0)
+                capture_count = getattr(st.session_state, 'payments_to_capture_count', 0)
+                capture_revenue = getattr(st.session_state, 'payments_to_capture_revenue', 0)
+                
+                # Debug: Show what we actually have
+                st.error(f"DEBUG: fulfill_count = {fulfill_count}, capture_count = {capture_count}")
+                
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    fulfill_revenue = getattr(st.session_state, 'orders_to_fulfill_revenue', 0)
-                    fulfill_count = getattr(st.session_state, 'orders_to_fulfill_count', 0)
                     st.markdown(create_premium_metric_card(
                         "📦 Orders to Fulfill", 
                         f"{fulfill_count:,}",
@@ -873,8 +880,6 @@ if not admin_widget_view:
                     ), unsafe_allow_html=True)
                 
                 with col2:
-                    capture_revenue = getattr(st.session_state, 'payments_to_capture_revenue', 0)
-                    capture_count = getattr(st.session_state, 'payments_to_capture_count', 0)
                     st.markdown(create_premium_metric_card(
                         "💰 Payments to Capture", 
                         f"{capture_count:,}",
@@ -882,12 +887,12 @@ if not admin_widget_view:
                     ), unsafe_allow_html=True)
                 
                 with col3:
-                    total_pending = getattr(st.session_state, 'total_pending_revenue', 0)
-                    total_count = getattr(st.session_state, 'total_pending_count', 0)
+                    total_count = fulfill_count + capture_count
+                    total_revenue = fulfill_revenue + capture_revenue
                     st.markdown(create_premium_metric_card(
                         "🎯 Total Action Items", 
                         f"{total_count:,}",
-                        f"₹{total_pending:,.0f} requiring attention"
+                        f"₹{total_revenue:,.0f} requiring attention"
                     ), unsafe_allow_html=True)
 
                 # Add detailed pending orders table
