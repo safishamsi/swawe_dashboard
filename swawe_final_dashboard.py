@@ -60,57 +60,67 @@ def check_for_new_orders():
 
 def calculate_unfulfilled_revenue(orders):
     """Calculate revenue from orders to fulfill and payments to capture"""
+    orders_to_fulfill_revenue = 0  
+    payments_to_capture_revenue = 0  
+    orders_to_fulfill_count = 0
+    payments_to_capture_count = 0
     
-    # Let's manually count the exact combinations to understand the data
-    status_combinations = {}
+    orders_to_fulfill_list = []
+    payments_to_capture_list = []
     
     for order in orders:
-        fulfillment_status = order.get('fulfillment_status')
+        # Use the correct field names from Shopify
+        fulfillment_status = order.get('displayFulfillmentStatus')
         financial_status = order.get('financial_status')
+        fully_paid = order.get('fullyPaid', False)
+        unpaid = order.get('unpaid', False)
+        order_total = float(order.get('total_price', 0))
         
-        # Create a key for this combination
-        key = f"F:{fulfillment_status}|P:{financial_status}"
+        # CORRECT LOGIC using displayFulfillmentStatus:
+        # Orders to fulfill = displayFulfillmentStatus is UNFULFILLED (regardless of payment)
+        # Payments to capture = displayFulfillmentStatus is FULFILLED AND NOT fully paid
         
-        if key not in status_combinations:
-            status_combinations[key] = 0
-        status_combinations[key] += 1
+        if fulfillment_status in [None, 'UNFULFILLED']:
+            # Orders to fulfill - unfulfilled orders
+            orders_to_fulfill_revenue += order_total
+            orders_to_fulfill_count += 1
+            
+            payment_status = 'Paid' if fully_paid else ('Unpaid' if unpaid else 'Partial')
+            
+            orders_to_fulfill_list.append({
+                'order_name': order.get('name', 'N/A'),
+                'total_price': order_total,
+                'customer_email': order.get('email', 'N/A'),
+                'created_at': order.get('created_at', ''),
+                'line_items': len(order.get('line_items', [])),
+                'fulfillment_status': fulfillment_status,
+                'financial_status': financial_status,
+                'status_type': f'To Fulfill ({payment_status})'
+            })
+            
+        elif fulfillment_status == 'FULFILLED' and not fully_paid:
+            # Payments to capture - fulfilled but not fully paid
+            payments_to_capture_revenue += order_total
+            payments_to_capture_count += 1
+            
+            payments_to_capture_list.append({
+                'order_name': order.get('name', 'N/A'),
+                'total_price': order_total,
+                'customer_email': order.get('email', 'N/A'),
+                'created_at': order.get('created_at', ''),
+                'line_items': len(order.get('line_items', [])),
+                'fulfillment_status': fulfillment_status,
+                'financial_status': financial_status,
+                'status_type': 'Payment to Capture'
+            })
     
-    # Show the breakdown at the top of your dashboard
-    st.error("🔍 **ACTUAL STATUS COMBINATIONS IN YOUR DATA:**")
-    for combo, count in sorted(status_combinations.items(), key=lambda x: x[1], reverse=True):
-        st.error(f"{combo}: **{count} orders**")
-    
-    # Now let's try different logic combinations and see which gives us close to 17+23=40
-    
-    # Option 1: Standard logic
-    option1_fulfill = sum(1 for order in orders if order.get('fulfillment_status') in [None, 'unfulfilled'])
-    option1_capture = sum(1 for order in orders if order.get('fulfillment_status') == 'fulfilled' and order.get('financial_status') != 'paid')
-    
-    # Option 2: Try partial fulfillment
-    option2_fulfill = sum(1 for order in orders if order.get('fulfillment_status') in [None, 'unfulfilled', 'partial'])
-    option2_capture = sum(1 for order in orders if order.get('fulfillment_status') == 'fulfilled' and order.get('financial_status') in ['pending', 'authorized'])
-    
-    # Option 3: Different financial status logic
-    option3_fulfill = sum(1 for order in orders if order.get('fulfillment_status') in [None, 'unfulfilled'])
-    option3_capture = sum(1 for order in orders if order.get('fulfillment_status') == 'fulfilled' and order.get('financial_status') in ['pending', 'authorized', 'partially_paid'])
-    
-    st.warning("🧪 **TESTING DIFFERENT LOGIC:**")
-    st.warning(f"Option 1: {option1_fulfill} fulfill + {option1_capture} capture = {option1_fulfill + option1_capture}")
-    st.warning(f"Option 2: {option2_fulfill} fulfill + {option2_capture} capture = {option2_fulfill + option2_capture}")  
-    st.warning(f"Option 3: {option3_fulfill} fulfill + {option3_capture} capture = {option3_fulfill + option3_capture}")
-    
-    # For now, return the original logic but we'll see which option is closest to 17+23=40
-    orders_to_fulfill_count = option1_fulfill
-    payments_to_capture_count = option1_capture
-    
-    # Calculate revenues (simplified for now)
-    orders_to_fulfill_revenue = sum(float(order.get('total_price', 0)) for order in orders if order.get('fulfillment_status') in [None, 'unfulfilled'])
-    payments_to_capture_revenue = sum(float(order.get('total_price', 0)) for order in orders if order.get('fulfillment_status') == 'fulfilled' and order.get('financial_status') != 'paid')
-    
-    # Create empty lists for now
-    all_pending_orders = []
+    # Combine both lists
+    all_pending_orders = orders_to_fulfill_list + payments_to_capture_list
     total_revenue = orders_to_fulfill_revenue + payments_to_capture_revenue
     total_count = orders_to_fulfill_count + payments_to_capture_count
+    
+    # Debug info
+    st.success(f"✅ Using displayFulfillmentStatus + fullyPaid: {orders_to_fulfill_count} to fulfill + {payments_to_capture_count} to capture = {total_count} total")
     
     return (total_revenue, total_count, all_pending_orders, 
             orders_to_fulfill_revenue, orders_to_fulfill_count,
