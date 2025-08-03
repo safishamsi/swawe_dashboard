@@ -60,8 +60,8 @@ def check_for_new_orders():
 
 def calculate_unfulfilled_revenue(orders):
     """Calculate revenue from orders to fulfill and payments to capture"""
-    orders_to_fulfill_revenue = 0  # All unfulfilled orders (not yet shipped)
-    payments_to_capture_revenue = 0  # Fulfilled orders with pending payment (shipped but not paid)
+    orders_to_fulfill_revenue = 0  # ONLY unfulfilled orders (not yet shipped)
+    payments_to_capture_revenue = 0  # ONLY fulfilled orders with pending payment (shipped but not paid)
     orders_to_fulfill_count = 0
     payments_to_capture_count = 0
     
@@ -92,17 +92,16 @@ def calculate_unfulfilled_revenue(orders):
         
         order_total = float(order.get('total_price', 0))
         
-        is_unfulfilled = (
-            fulfillment_status is None or 
-            fulfillment_upper in ['UNFULFILLED', 'PARTIAL', 'NONE', ''] or
-            fulfillment_status == ''
-        )
+        # More specific status checking
+        is_unfulfilled = fulfillment_upper in ['UNFULFILLED', 'NONE', '']
+        is_fulfilled = fulfillment_upper in ['FULFILLED', 'COMPLETE', 'SHIPPED']
+        is_partial = fulfillment_upper in ['PARTIAL', 'PARTIALLY_FULFILLED']
         
-        is_fulfilled = fulfillment_upper in ['FULFILLED', 'COMPLETE']
         is_paid = financial_upper in ['PAID', 'PARTIALLY_PAID', 'AUTHORIZED']
         is_pending_payment = financial_upper in ['PENDING', 'NONE', 'UNPAID', 'AWAITING_PAYMENT', 'UNAUTHORIZED']
         
-        # Orders to Fulfill: ANY unfulfilled order (not yet shipped, regardless of payment)
+        # CLEAR SEPARATION:
+        # 1. Orders to Fulfill = Unfulfilled orders (regardless of payment status)
         if is_unfulfilled:
             orders_to_fulfill_revenue += order_total
             orders_to_fulfill_count += 1
@@ -120,7 +119,7 @@ def calculate_unfulfilled_revenue(orders):
                 'status_type': f'To Fulfill ({payment_status})'
             })
         
-        # Payments to Capture: Fulfilled orders with pending payment (shipped but not paid)
+        # 2. Payments to Capture = Fulfilled orders with pending payment ONLY
         elif is_fulfilled and is_pending_payment:
             payments_to_capture_revenue += order_total
             payments_to_capture_count += 1
@@ -141,11 +140,12 @@ def calculate_unfulfilled_revenue(orders):
     total_revenue = orders_to_fulfill_revenue + payments_to_capture_revenue
     total_count = orders_to_fulfill_count + payments_to_capture_count
     
-    # Show debug info
+    # Show debug info with clear breakdown
     st.info(f"🔍 Debug: Found fulfillment statuses: {fulfillment_statuses}")
     st.info(f"💳 Debug: Found financial statuses: {financial_statuses}")
-    st.info(f"📦 Debug: {orders_to_fulfill_count} orders to fulfill (₹{orders_to_fulfill_revenue:,.0f})")
-    st.info(f"💰 Debug: {payments_to_capture_count} payments to capture (₹{payments_to_capture_revenue:,.0f})")
+    st.success(f"📦 ORDERS TO FULFILL: {orders_to_fulfill_count} orders (₹{orders_to_fulfill_revenue:,.0f}) - UNFULFILLED ONLY")
+    st.success(f"💰 PAYMENTS TO CAPTURE: {payments_to_capture_count} orders (₹{payments_to_capture_revenue:,.0f}) - FULFILLED WITH PENDING PAYMENT ONLY")
+    st.info(f"🎯 TOTAL: {total_count} action items (₹{total_revenue:,.0f})")
     
     return (total_revenue, total_count, all_pending_orders, 
             orders_to_fulfill_revenue, orders_to_fulfill_count,
