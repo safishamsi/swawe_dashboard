@@ -58,6 +58,273 @@ def check_for_new_orders():
                 pass
         st.session_state.last_order_check = datetime.now()
 
+def calculate_unfulfilled_revenue(orders):
+    """Calculate revenue from orders to fulfill and payments to capture"""
+    orders_to_fulfill_revenue = 0  # All unfulfilled orders (not yet shipped)
+    payments_to_capture_revenue = 0  # Fulfilled orders with pending payment (shipped but not paid)
+    orders_to_fulfill_count = 0
+    payments_to_capture_count = 0
+    
+    orders_to_fulfill_list = []
+    payments_to_capture_list = []
+    
+    # Debug info
+    fulfillment_statuses = set()
+    financial_statuses = set()
+    
+    for order in orders:
+        # Try multiple possible field names for fulfillment status
+        fulfillment_status = (
+            order.get('displayFulfillmentStatus') or 
+            order.get('fulfillment_status') or 
+            order.get('display_fulfillment_status')
+        )
+        
+        financial_status = order.get('financial_status')
+        
+        # Collect all status types for debugging
+        fulfillment_statuses.add(fulfillment_status)
+        financial_statuses.add(financial_status)
+        
+        # Convert to uppercase and handle None values
+        fulfillment_upper = str(fulfillment_status).upper() if fulfillment_status else 'NONE'
+        financial_upper = str(financial_status).upper() if financial_status else 'NONE'
+        
+        order_total = float(order.get('total_price', 0))
+        
+        is_unfulfilled = (
+            fulfillment_status is None or 
+            fulfillment_upper in ['UNFULFILLED', 'PARTIAL', 'NONE', ''] or
+            fulfillment_status == ''
+        )
+        
+        is_fulfilled = fulfillment_upper in ['FULFILLED', 'COMPLETE']
+        is_paid = financial_upper in ['PAID', 'PARTIALLY_PAID', 'AUTHORIZED']
+        is_pending_payment = financial_upper in ['PENDING', 'NONE', 'UNPAID', 'AWAITING_PAYMENT', 'UNAUTHORIZED']
+        
+        # Orders to Fulfill: ANY unfulfilled order (not yet shipped, regardless of payment)
+        if is_unfulfilled:
+            orders_to_fulfill_revenue += order_total
+            orders_to_fulfill_count += 1
+            
+            payment_status = 'Paid' if is_paid else 'Payment Pending'
+            
+            orders_to_fulfill_list.append({
+                'order_name': order.get('name', 'N/A'),
+                'total_price': order_total,
+                'customer_email': order.get('email', 'N/A'),
+                'created_at': order.get('created_at', ''),
+                'line_items': len(order.get('line_items', [])),
+                'fulfillment_status': fulfillment_status,
+                'financial_status': financial_status,
+                'status_type': f'To Fulfill ({payment_status})'
+            })
+        
+        # Payments to Capture: Fulfilled orders with pending payment (shipped but not paid)
+        elif is_fulfilled and is_pending_payment:
+            payments_to_capture_revenue += order_total
+            payments_to_capture_count += 1
+            
+            payments_to_capture_list.append({
+                'order_name': order.get('name', 'N/A'),
+                'total_price': order_total,
+                'customer_email': order.get('email', 'N/A'),
+                'created_at': order.get('created_at', ''),
+                'line_items': len(order.get('line_items', [])),
+                'fulfillment_status': fulfillment_status,
+                'financial_status': financial_status,
+                'status_type': 'Payment to Capture'
+            })
+    
+    # Combine both lists for the table
+    all_pending_orders = orders_to_fulfill_list + payments_to_capture_list
+    total_revenue = orders_to_fulfill_revenue + payments_to_capture_revenue
+    total_count = orders_to_fulfill_count + payments_to_capture_count
+    
+    # Show debug info
+    st.info(f"🔍 Debug: Found fulfillment statuses: {fulfillment_statuses}")
+    st.info(f"💳 Debug: Found financial statuses: {financial_statuses}")
+    st.info(f"📦 Debug: {orders_to_fulfill_count} orders to fulfill (₹{orders_to_fulfill_revenue:,.0f})")
+    st.info(f"💰 Debug: {payments_to_capture_count} payments to capture (₹{payments_to_capture_revenue:,.0f})")
+    
+    return (total_revenue, total_count, all_pending_orders, 
+            orders_to_fulfill_revenue, orders_to_fulfill_count,
+            payments_to_capture_revenue, payments_to_capture_count)
+
+def fetch_all_orders():
+    """Fetch ALL orders using proper Shopify pagination"""
+    if not shopify_connected:
+        return []
+        
+    all_orders = []
+    headers = {"X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN}
+    
+    count_url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders/count.json?status=any"
+    count_response = requests.get(count_url, headers=headers)
+    
+    if count_response.status_code == 200:
+        total_orders = count_response.json().get("count", 0)
+        st.info(f"🔍 Found {total_orders} total orders in your store")
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any"
+        page_count = 0
+        
+        while url:
+            page_count += 1
+            status_text.text(f"📥 Fetching batch {page_count}... ({len(all_orders)} orders loaded)")
+            
+            try:
+                response = requests.get(url, headers=headers)
+                if response.status_code == 200:
+                    page_orders = response.json().get("orders", [])
+                    if not page_orders:
+                        break
+                    
+                    all_orders.extend(page_orders)
+                    progress_bar.progress(min(len(all_orders) / total_orders, 0.99))
+                    
+                    link_header = response.headers.get('Link', '')
+                    url = None
+                    if 'rel="next"' in link_header:
+                        for link in link_header.split(','):
+                            if 'rel="next"' in link:
+                                url = link.split(';')[0].strip('<> ')
+                                break
+                    
+                    time.sleep(0.5)
+                else:
+                    st.error(f"❌ API Error: {response.status_code}")
+                    break
+            except Exception as e:
+                st.error(f"❌ Error: {e}")
+                break
+        
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Calculate orders to fulfill and payments to capture
+        if all_orders:
+            (total_revenue, total_count, all_pending_orders, 
+             fulfill_revenue, fulfill_count, capture_revenue, capture_count) = calculate_unfulfilled_revenue(all_orders)
+            
+            # Store in session state
+            st.session_state.total_pending_revenue = total_revenue
+            st.session_state.total_pending_count = total_count
+            st.session_state.pending_orders_list = all_pending_orders
+            st.session_state.orders_to_fulfill_revenue = fulfill_revenue
+            st.session_state.orders_to_fulfill_count = fulfill_count
+            st.session_state.payments_to_capture_revenue = capture_revenue
+            st.session_state.payments_to_capture_count = capture_count
+        
+        order_numbers = []
+        for order in all_orders:
+            order_name = order.get('name', '')
+            if order_name.startswith('#'):
+                try:
+                    order_numbers.append(int(order_name.replace('#', '')))
+                except:
+                    pass
+        
+        if order_numbers:
+            min_order = min(order_numbers)
+            max_order = max(order_numbers)
+            st.success(f"✅ Successfully loaded {len(all_orders)} orders (#{min_order} to #{max_order})")
+        else:
+            st.success(f"✅ Successfully loaded {len(all_orders)} orders")
+    
+    return all_orders
+
+def recalculate_profits(sales_data):
+    """Recalculate profits based on current margin settings"""
+    updated_data = []
+    
+    hoodie_total_cost = st.session_state.hoodie_base_cost + st.session_state.additional_cost
+    tshirt_total_cost = st.session_state.tshirt_base_cost + st.session_state.additional_cost
+    
+    for sale in sales_data:
+        updated_sale = sale.copy()
+        
+        # Determine total cost based on category
+        if sale['category'] == 'Hoodies':
+            updated_sale['cost_used'] = hoodie_total_cost
+        else:  # T-Shirts
+            updated_sale['cost_used'] = tshirt_total_cost
+        
+        # Recalculate profit
+        updated_sale['profit'] = sale['selling_price'] - updated_sale['cost_used']
+        
+        updated_data.append(updated_sale)
+    
+    return updated_data
+
+def process_orders(orders):
+    """Process orders ensuring no duplicates with dynamic profit calculation"""
+    processed_sales = []
+    seen_combinations = set()
+    
+    # Get current cost settings
+    hoodie_total_cost = st.session_state.hoodie_base_cost + st.session_state.additional_cost
+    tshirt_total_cost = st.session_state.tshirt_base_cost + st.session_state.additional_cost
+    
+    for order in orders:
+        order_name = order.get('name', 'N/A')
+        
+        for line_item in order.get("line_items", []):
+            item_id = line_item.get('id')
+            combination_key = f"{order_name}_{item_id}"
+            
+            if combination_key in seen_combinations:
+                continue
+            seen_combinations.add(combination_key)
+            
+            item_name = line_item.get("name", "")
+            selling_price = float(line_item.get("price", 0))
+            quantity = int(line_item.get("quantity", 1))
+            
+            # Determine category and use dynamic costs
+            category = 'Hoodies' if 'hoodie' in item_name.lower() else 'T-Shirts'
+            total_cost = hoodie_total_cost if category == 'Hoodies' else tshirt_total_cost
+            profit = selling_price - total_cost
+            
+            created_at = order.get("created_at", "")
+            try:
+                sale_date = datetime.fromisoformat(created_at.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+            except:
+                sale_date = datetime.now().strftime('%Y-%m-%d')
+            
+            customer = order.get("email", "N/A")
+            if '@' in str(customer):
+                customer = customer.split('@')[0] + '@...'
+            
+            processed_sales.append({
+                'item_name': item_name,
+                'category': category,
+                'selling_price': selling_price,
+                'cost_used': total_cost,
+                'profit': profit,
+                'quantity': quantity,
+                'date': sale_date,
+                'customer': customer,
+                'order_name': order_name,
+                'financial_status': order.get('financial_status', 'unknown')
+            })
+    
+    return processed_sales
+
+def create_premium_metric_card(label, value, delta=None, delta_color="normal"):
+    delta_html = f'<div class="metric-delta">{delta}</div>' if delta else ""
+    
+    return f"""
+    <div class="metric-card">
+        <div class="metric-value">{value}</div>
+        <div class="metric-label">{label}</div>
+        {delta_html}
+    </div>
+    """
+
 # Enhanced CSS with premium branding
 st.markdown("""
 <style>
@@ -486,247 +753,6 @@ else:
 st.sidebar.markdown("---")
 admin_widget_view = st.sidebar.checkbox("🎛️ **Compact Widget View**", help="Switch to a condensed dashboard view for quick insights")
 
-def calculate_unfulfilled_revenue(orders):
-    """Calculate revenue from unfulfilled orders (both paid and pending payment)"""
-    unfulfilled_revenue_paid = 0
-    unfulfilled_revenue_pending = 0
-    unfulfilled_count = 0
-    unfulfilled_orders_list = []
-    
-    # Debug info
-    fulfillment_statuses = set()
-    financial_statuses = set()
-    
-    for order in orders:
-        # Try multiple possible field names for fulfillment status
-        fulfillment_status = (
-            order.get('displayFulfillmentStatus') or 
-            order.get('fulfillment_status') or 
-            order.get('display_fulfillment_status')
-        )
-        
-        financial_status = order.get('financial_status')
-        
-        # Collect all status types for debugging
-        fulfillment_statuses.add(fulfillment_status)
-        financial_statuses.add(financial_status)
-        
-        # Convert to uppercase and handle None values
-        fulfillment_upper = str(fulfillment_status).upper() if fulfillment_status else 'NONE'
-        financial_upper = str(financial_status).upper() if financial_status else 'NONE'
-        
-        # Check if order needs fulfillment (regardless of payment status)
-        is_unfulfilled = (
-            fulfillment_status is None or 
-            fulfillment_upper in ['UNFULFILLED', 'PARTIAL', 'NONE', ''] or
-            fulfillment_status == ''
-        )
-        
-        is_paid = financial_upper in ['PAID', 'PARTIALLY_PAID', 'AUTHORIZED']
-        is_pending = financial_upper in ['PENDING', 'NONE', 'UNPAID', 'AWAITING_PAYMENT']
-        
-        # Count ALL unfulfilled orders (paid + pending)
-        if is_unfulfilled:
-            order_total = float(order.get('total_price', 0))
-            unfulfilled_count += 1
-            
-            # Separate paid vs pending revenue
-            if is_paid:
-                unfulfilled_revenue_paid += order_total
-            elif is_pending:
-                unfulfilled_revenue_pending += order_total
-            
-            unfulfilled_orders_list.append({
-                'order_name': order.get('name', 'N/A'),
-                'total_price': order_total,
-                'customer_email': order.get('email', 'N/A'),
-                'created_at': order.get('created_at', ''),
-                'line_items': len(order.get('line_items', [])),
-                'fulfillment_status': fulfillment_status,
-                'financial_status': financial_status,
-                'payment_type': 'Paid' if is_paid else 'Pending Payment'
-            })
-    
-    total_unfulfilled_revenue = unfulfilled_revenue_paid + unfulfilled_revenue_pending
-    
-    # Show debug info
-    st.info(f"🔍 Debug: Found fulfillment statuses: {fulfillment_statuses}")
-    st.info(f"💳 Debug: Found financial statuses: {financial_statuses}")
-    st.info(f"📊 Debug: {unfulfilled_count} unfulfilled orders - ₹{unfulfilled_revenue_paid:,.0f} paid + ₹{unfulfilled_revenue_pending:,.0f} pending = ₹{total_unfulfilled_revenue:,.0f} total")
-    
-    return total_unfulfilled_revenue, unfulfilled_count, unfulfilled_orders_list, unfulfilled_revenue_paid, unfulfilled_revenue_pending
-
-def fetch_all_orders():
-    """Fetch ALL orders using proper Shopify pagination"""
-    if not shopify_connected:
-        return []
-        
-    all_orders = []
-    headers = {"X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN}
-    
-    count_url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders/count.json?status=any"
-    count_response = requests.get(count_url, headers=headers)
-    
-    if count_response.status_code == 200:
-        total_orders = count_response.json().get("count", 0)
-        st.info(f"🔍 Found {total_orders} total orders in your store")
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        url = f"https://{SHOPIFY_STORE_URL}/admin/api/2023-10/orders.json?limit=250&status=any"
-        page_count = 0
-        
-        while url:
-            page_count += 1
-            status_text.text(f"📥 Fetching batch {page_count}... ({len(all_orders)} orders loaded)")
-            
-            try:
-                response = requests.get(url, headers=headers)
-                if response.status_code == 200:
-                    page_orders = response.json().get("orders", [])
-                    if not page_orders:
-                        break
-                    
-                    all_orders.extend(page_orders)
-                    progress_bar.progress(min(len(all_orders) / total_orders, 0.99))
-                    
-                    link_header = response.headers.get('Link', '')
-                    url = None
-                    if 'rel="next"' in link_header:
-                        for link in link_header.split(','):
-                            if 'rel="next"' in link:
-                                url = link.split(';')[0].strip('<> ')
-                                break
-                    
-                    time.sleep(0.5)
-                else:
-                    st.error(f"❌ API Error: {response.status_code}")
-                    break
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
-                break
-        
-        progress_bar.empty()
-        status_text.empty()
-        
-        # Calculate unfulfilled revenue
-        if all_orders:
-            unfulfilled_revenue, unfulfilled_count, unfulfilled_list, paid_revenue, pending_revenue = calculate_unfulfilled_revenue(all_orders)
-            
-            # Store in session state
-            st.session_state.unfulfilled_revenue = unfulfilled_revenue
-            st.session_state.unfulfilled_count = unfulfilled_count
-            st.session_state.unfulfilled_orders = unfulfilled_list
-            st.session_state.unfulfilled_paid = paid_revenue
-            st.session_state.unfulfilled_pending = pending_revenue
-        
-        order_numbers = []
-        for order in all_orders:
-            order_name = order.get('name', '')
-            if order_name.startswith('#'):
-                try:
-                    order_numbers.append(int(order_name.replace('#', '')))
-                except:
-                    pass
-        
-        if order_numbers:
-            min_order = min(order_numbers)
-            max_order = max(order_numbers)
-            st.success(f"✅ Successfully loaded {len(all_orders)} orders (#{min_order} to #{max_order})")
-        else:
-            st.success(f"✅ Successfully loaded {len(all_orders)} orders")
-    
-    return all_orders
-
-def recalculate_profits(sales_data):
-    """Recalculate profits based on current margin settings"""
-    updated_data = []
-    
-    hoodie_total_cost = st.session_state.hoodie_base_cost + st.session_state.additional_cost
-    tshirt_total_cost = st.session_state.tshirt_base_cost + st.session_state.additional_cost
-    
-    for sale in sales_data:
-        updated_sale = sale.copy()
-        
-        # Determine total cost based on category
-        if sale['category'] == 'Hoodies':
-            updated_sale['cost_used'] = hoodie_total_cost
-        else:  # T-Shirts
-            updated_sale['cost_used'] = tshirt_total_cost
-        
-        # Recalculate profit
-        updated_sale['profit'] = sale['selling_price'] - updated_sale['cost_used']
-        
-        updated_data.append(updated_sale)
-    
-    return updated_data
-
-def process_orders(orders):
-    """Process orders ensuring no duplicates with dynamic profit calculation"""
-    processed_sales = []
-    seen_combinations = set()
-    
-    # Get current cost settings
-    hoodie_total_cost = st.session_state.hoodie_base_cost + st.session_state.additional_cost
-    tshirt_total_cost = st.session_state.tshirt_base_cost + st.session_state.additional_cost
-    
-    for order in orders:
-        order_name = order.get('name', 'N/A')
-        
-        for line_item in order.get("line_items", []):
-            item_id = line_item.get('id')
-            combination_key = f"{order_name}_{item_id}"
-            
-            if combination_key in seen_combinations:
-                continue
-            seen_combinations.add(combination_key)
-            
-            item_name = line_item.get("name", "")
-            selling_price = float(line_item.get("price", 0))
-            quantity = int(line_item.get("quantity", 1))
-            
-            # Determine category and use dynamic costs
-            category = 'Hoodies' if 'hoodie' in item_name.lower() else 'T-Shirts'
-            total_cost = hoodie_total_cost if category == 'Hoodies' else tshirt_total_cost
-            profit = selling_price - total_cost
-            
-            created_at = order.get("created_at", "")
-            try:
-                sale_date = datetime.fromisoformat(created_at.replace('Z', '+00:00')).strftime('%Y-%m-%d')
-            except:
-                sale_date = datetime.now().strftime('%Y-%m-%d')
-            
-            customer = order.get("email", "N/A")
-            if '@' in str(customer):
-                customer = customer.split('@')[0] + '@...'
-            
-            processed_sales.append({
-                'item_name': item_name,
-                'category': category,
-                'selling_price': selling_price,
-                'cost_used': total_cost,
-                'profit': profit,
-                'quantity': quantity,
-                'date': sale_date,
-                'customer': customer,
-                'order_name': order_name,
-                'financial_status': order.get('financial_status', 'unknown')
-            })
-    
-    return processed_sales
-
-def create_premium_metric_card(label, value, delta=None, delta_color="normal"):
-    delta_html = f'<div class="metric-delta">{delta}</div>' if delta else ""
-    
-    return f"""
-    <div class="metric-card">
-        <div class="metric-value">{value}</div>
-        <div class="metric-label">{label}</div>
-        {delta_html}
-    </div>
-    """
-
 # Premium Admin Widget View
 if admin_widget_view and st.session_state.sales_data:
     st.markdown("### 🎛️ **SWAWE Command Center**")
@@ -832,55 +858,55 @@ if not admin_widget_view:
                 st.markdown(create_premium_metric_card("Total Orders", f"{unique_orders:,}"), unsafe_allow_html=True)
             
             # Cash Flow Pipeline Section
-            if hasattr(st.session_state, 'unfulfilled_revenue'):
+            if hasattr(st.session_state, 'total_pending_revenue'):
                 st.markdown("### 💰 **Cash Flow Pipeline**")
                 
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    unfulfilled_revenue = getattr(st.session_state, 'unfulfilled_revenue', 0)
-                    paid_revenue = getattr(st.session_state, 'unfulfilled_paid', 0)
-                    pending_revenue = getattr(st.session_state, 'unfulfilled_pending', 0)
+                    fulfill_revenue = getattr(st.session_state, 'orders_to_fulfill_revenue', 0)
+                    fulfill_count = getattr(st.session_state, 'orders_to_fulfill_count', 0)
                     st.markdown(create_premium_metric_card(
-                        "💵 Total Unfulfilled Revenue", 
-                        f"₹{unfulfilled_revenue:,.0f}",
-                        f"₹{paid_revenue:,.0f} paid + ₹{pending_revenue:,.0f} pending"
+                        "📦 Orders to Fulfill", 
+                        f"{fulfill_count:,}",
+                        f"₹{fulfill_revenue:,.0f} revenue (not yet shipped)"
                     ), unsafe_allow_html=True)
                 
                 with col2:
-                    unfulfilled_count = getattr(st.session_state, 'unfulfilled_count', 0)
+                    capture_revenue = getattr(st.session_state, 'payments_to_capture_revenue', 0)
+                    capture_count = getattr(st.session_state, 'payments_to_capture_count', 0)
                     st.markdown(create_premium_metric_card(
-                        "📦 Orders to Fulfill", 
-                        f"{unfulfilled_count:,}",
-                        "All orders awaiting fulfillment"
+                        "💰 Payments to Capture", 
+                        f"{capture_count:,}",
+                        f"₹{capture_revenue:,.0f} from shipped orders"
                     ), unsafe_allow_html=True)
                 
                 with col3:
-                    # Calculate average value of unfulfilled orders
-                    avg_unfulfilled = unfulfilled_revenue / unfulfilled_count if unfulfilled_count > 0 else 0
+                    total_pending = getattr(st.session_state, 'total_pending_revenue', 0)
+                    total_count = getattr(st.session_state, 'total_pending_count', 0)
                     st.markdown(create_premium_metric_card(
-                        "📊 Avg Unfulfilled Value", 
-                        f"₹{avg_unfulfilled:.0f}",
-                        "Average order value pending"
+                        "🎯 Total Pipeline", 
+                        f"₹{total_pending:,.0f}",
+                        f"{total_count:,} orders requiring action"
                     ), unsafe_allow_html=True)
 
-                # Add a detailed unfulfilled orders table
-                if hasattr(st.session_state, 'unfulfilled_orders') and st.session_state.unfulfilled_orders:
-                    st.markdown("#### 🚨 **Priority Orders to Fulfill**")
+                # Add detailed pending orders table
+                if hasattr(st.session_state, 'pending_orders_list') and st.session_state.pending_orders_list:
+                    st.markdown("#### 🚨 **Orders Requiring Action**")
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                     
-                    unfulfilled_df = pd.DataFrame(st.session_state.unfulfilled_orders)
-                    unfulfilled_df['created_at'] = pd.to_datetime(unfulfilled_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
-                    unfulfilled_df = unfulfilled_df.sort_values('total_price', ascending=False)
+                    pending_df = pd.DataFrame(st.session_state.pending_orders_list)
+                    pending_df['created_at'] = pd.to_datetime(pending_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+                    pending_df = pending_df.sort_values('total_price', ascending=False)
                     
                     # Style the dataframe for better visibility
-                    styled_df = unfulfilled_df.rename(columns={
+                    styled_df = pending_df.rename(columns={
                         'order_name': '🛍️ Order',
                         'total_price': '💰 Value (₹)',
                         'customer_email': '👤 Customer',
                         'created_at': '📅 Order Date',
                         'line_items': '📦 Items',
-                        'payment_type': '💳 Payment Status'
+                        'status_type': '⚡ Action Needed'
                     })
                     
                     st.dataframe(
@@ -893,35 +919,35 @@ if not admin_widget_view:
                     # Add quick action buttons
                     col1, col2 = st.columns(2)
                     with col1:
-                        if st.button("🚀 Go to Shopify Orders", type="primary", use_container_width=True):
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url=https://{SHOPIFY_STORE_URL}/admin/orders?status=unfulfilled">', unsafe_allow_html=True)
+                        if st.button("📦 Go to Shopify Orders", type="primary", use_container_width=True):
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url=https://{SHOPIFY_STORE_URL}/admin/orders">', unsafe_allow_html=True)
                     
                     with col2:
-                        if st.button("📧 Export Unfulfilled List", use_container_width=True):
+                        if st.button("📧 Export Action List", use_container_width=True):
                             csv = styled_df.to_csv(index=False)
                             st.download_button(
                                 label="💾 Download CSV",
                                 data=csv,
-                                file_name=f"swawe_unfulfilled_orders_{datetime.now().strftime('%Y%m%d')}.csv",
+                                file_name=f"swawe_pending_actions_{datetime.now().strftime('%Y%m%d')}.csv",
                                 mime="text/csv",
                                 use_container_width=True
                             )
                     
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Add a cash flow insight
-                if unfulfilled_revenue > 0:
+                # Add business insight
+                if total_pending > 0:
                     total_revenue = pd.DataFrame(st.session_state.sales_data)['selling_price'].sum()
-                    pipeline_percentage = (unfulfilled_revenue / total_revenue * 100) if total_revenue > 0 else 0
+                    pipeline_percentage = (total_pending / total_revenue * 100) if total_revenue > 0 else 0
                     
                     st.markdown(f"""
                     <div class="insight-card">
-                        <h4 style="color: #FF6B35; margin-bottom: 1rem; font-size: 1.2rem;">💡 Cash Flow Insight</h4>
+                        <h4 style="color: #FF6B35; margin-bottom: 1rem; font-size: 1.2rem;">💡 Business Action Insight</h4>
                         <p style="color: rgba(255,255,255,0.9); line-height: 1.6; font-size: 1rem;">
-                        You have <strong>₹{unfulfilled_revenue:,.0f}</strong> in total revenue from {unfulfilled_count} unfulfilled orders. 
-                        This includes <strong>₹{getattr(st.session_state, 'unfulfilled_paid', 0):,.0f}</strong> from paid orders (immediate cash flow) 
-                        and <strong>₹{getattr(st.session_state, 'unfulfilled_pending', 0):,.0f}</strong> from pending payments. 
-                        This represents <strong>{pipeline_percentage:.1f}%</strong> of your total revenue pipeline.
+                        You have <strong>{fulfill_count} orders to fulfill</strong> (₹{fulfill_revenue:,.0f}) that need shipping and 
+                        <strong>{capture_count} payments to capture</strong> (₹{capture_revenue:,.0f}) from already shipped orders. 
+                        Total pipeline: <strong>₹{total_pending:,.0f}</strong> ({pipeline_percentage:.1f}% of your revenue). 
+                        Priority: Ship paid orders first, then follow up on payments.
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
