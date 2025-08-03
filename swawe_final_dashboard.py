@@ -869,7 +869,7 @@ if not admin_widget_view:
                     st.markdown(create_premium_metric_card(
                         "📦 Orders to Fulfill", 
                         f"{fulfill_count:,}",
-                        f"₹{fulfill_revenue:,.0f} revenue (not yet shipped)"
+                        f"₹{fulfill_revenue:,.0f} revenue (unfulfilled orders)"
                     ), unsafe_allow_html=True)
                 
                 with col2:
@@ -885,9 +885,9 @@ if not admin_widget_view:
                     total_pending = getattr(st.session_state, 'total_pending_revenue', 0)
                     total_count = getattr(st.session_state, 'total_pending_count', 0)
                     st.markdown(create_premium_metric_card(
-                        "🎯 Total Pipeline", 
-                        f"₹{total_pending:,.0f}",
-                        f"{total_count:,} orders requiring action"
+                        "🎯 Total Action Items", 
+                        f"{total_count:,}",
+                        f"₹{total_pending:,.0f} requiring attention"
                     ), unsafe_allow_html=True)
 
                 # Add detailed pending orders table
@@ -944,10 +944,10 @@ if not admin_widget_view:
                     <div class="insight-card">
                         <h4 style="color: #FF6B35; margin-bottom: 1rem; font-size: 1.2rem;">💡 Business Action Insight</h4>
                         <p style="color: rgba(255,255,255,0.9); line-height: 1.6; font-size: 1rem;">
-                        You have <strong>{fulfill_count} orders to fulfill</strong> (₹{fulfill_revenue:,.0f}) that need shipping and 
-                        <strong>{capture_count} payments to capture</strong> (₹{capture_revenue:,.0f}) from already shipped orders. 
-                        Total pipeline: <strong>₹{total_pending:,.0f}</strong> ({pipeline_percentage:.1f}% of your revenue). 
-                        Priority: Ship paid orders first, then follow up on payments.
+                        You have <strong>{fulfill_count} orders to fulfill</strong> (₹{fulfill_revenue:,.0f}) - these are unfulfilled orders that need shipping. 
+                        Additionally, you have <strong>{capture_count} payments to capture</strong> (₹{capture_revenue:,.0f}) from orders already shipped but payment pending. 
+                        Total action items: <strong>{total_count}</strong> with ₹{total_pending:,.0f} in revenue ({pipeline_percentage:.1f}% of total revenue). 
+                        Priority: Ship the {fulfill_count} unfulfilled orders first, then follow up on the {capture_count} pending payments.
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
