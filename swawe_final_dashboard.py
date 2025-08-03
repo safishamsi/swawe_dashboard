@@ -497,25 +497,32 @@ def calculate_unfulfilled_revenue(orders):
     financial_statuses = set()
     
     for order in orders:
-        fulfillment_status = order.get('fulfillment_status')
+        # Try multiple possible field names for fulfillment status
+        fulfillment_status = (
+            order.get('displayFulfillmentStatus') or 
+            order.get('fulfillment_status') or 
+            order.get('display_fulfillment_status')
+        )
+        
         financial_status = order.get('financial_status')
         
         # Collect all status types for debugging
         fulfillment_statuses.add(fulfillment_status)
         financial_statuses.add(financial_status)
         
-        # More comprehensive unfulfilled logic
+        # Convert to uppercase and handle None values
+        fulfillment_upper = str(fulfillment_status).upper() if fulfillment_status else 'NONE'
+        financial_upper = str(financial_status).upper() if financial_status else 'NONE'
+        
+        # More comprehensive unfulfilled logic (case-insensitive)
         is_unfulfilled = (
             fulfillment_status is None or 
-            fulfillment_status == 'unfulfilled' or 
-            fulfillment_status == 'partial' or
+            fulfillment_upper in ['UNFULFILLED', 'PARTIAL', 'NONE', ''] or
             fulfillment_status == ''
         )
         
         is_paid = (
-            financial_status == 'paid' or 
-            financial_status == 'partially_paid' or
-            financial_status == 'authorized'
+            financial_upper in ['PAID', 'PARTIALLY_PAID', 'AUTHORIZED']
         )
         
         # Count orders that need fulfillment and have payment
