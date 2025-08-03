@@ -60,6 +60,17 @@ def check_for_new_orders():
 
 def calculate_unfulfilled_revenue(orders):
     """Calculate revenue from orders to fulfill and payments to capture"""
+    
+    # SHOW DEBUGGING INFO PROMINENTLY
+    st.error("🔍 **DEBUGGING: First 3 orders from API:**")
+    for i, order in enumerate(orders[:3]):
+        st.error(f"**Order {i+1}:**")
+        st.error(f"Name: {order.get('name')}")
+        st.error(f"fulfillment_status: {order.get('fulfillment_status')}")  
+        st.error(f"financial_status: {order.get('financial_status')}")
+        st.error(f"Keys available: {list(order.keys())[:10]}...")  # Show first 10 keys
+        st.error("---")
+    
     orders_to_fulfill_revenue = 0  
     payments_to_capture_revenue = 0  
     orders_to_fulfill_count = 0
@@ -68,27 +79,20 @@ def calculate_unfulfilled_revenue(orders):
     orders_to_fulfill_list = []
     payments_to_capture_list = []
     
-    # Let's print the first few orders to see the actual data structure
-    st.write("🔍 **DEBUGGING: First 3 orders from API:**")
-    for i, order in enumerate(orders[:3]):
-        st.write(f"Order {i+1}:")
-        st.write(f"- Name: {order.get('name')}")
-        st.write(f"- fulfillment_status: {order.get('fulfillment_status')}")
-        st.write(f"- financial_status: {order.get('financial_status')}")
-        st.write(f"- All keys: {list(order.keys())}")
-        st.write("---")
+    # Count different status combinations
+    status_counts = {}
     
-    # For now, let's just count all orders to see the total
-    total_orders = len(orders)
-    st.write(f"📊 **Total orders from API: {total_orders}**")
-    
-    # Simple counting for now
     for order in orders:
         fulfillment_status = order.get('fulfillment_status')
         financial_status = order.get('financial_status')
+        
+        # Count status combinations
+        combo = f"{fulfillment_status}|{financial_status}"
+        status_counts[combo] = status_counts.get(combo, 0) + 1
+        
         order_total = float(order.get('total_price', 0))
         
-        # Just categorize everything as "to fulfill" for now to test
+        # For now, put everything in fulfill to see total
         orders_to_fulfill_revenue += order_total
         orders_to_fulfill_count += 1
         
@@ -103,7 +107,12 @@ def calculate_unfulfilled_revenue(orders):
             'status_type': 'To Fulfill'
         })
     
-    # Return simplified data
+    # Show status combinations
+    st.error("📊 **STATUS COMBINATIONS:**")
+    for combo, count in sorted(status_counts.items(), key=lambda x: x[1], reverse=True):
+        st.error(f"{combo}: {count} orders")
+    
+    # Return data
     all_pending_orders = orders_to_fulfill_list
     total_revenue = orders_to_fulfill_revenue
     total_count = orders_to_fulfill_count
