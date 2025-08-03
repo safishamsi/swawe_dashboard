@@ -73,12 +73,12 @@ def calculate_unfulfilled_revenue(orders):
         financial_status = order.get('financial_status')
         order_total = float(order.get('total_price', 0))
         
-        # Based on Shopify standard logic:
-        # Orders to fulfill = fulfillment_status is null OR unfulfilled
-        # Payments to capture = fulfillment_status is fulfilled AND financial_status is NOT paid
+        # CORRECT LOGIC:
+        # Orders to fulfill = unfulfilled orders (regardless of payment status)
+        # Payments to capture = fulfilled orders with pending payment
         
         if fulfillment_status is None or fulfillment_status == 'unfulfilled':
-            # This is an order that needs to be fulfilled
+            # Orders to fulfill - can be paid or payment pending
             orders_to_fulfill_revenue += order_total
             orders_to_fulfill_count += 1
             
@@ -96,7 +96,7 @@ def calculate_unfulfilled_revenue(orders):
             })
             
         elif fulfillment_status == 'fulfilled' and financial_status != 'paid':
-            # This is a fulfilled order but payment not captured
+            # Payments to capture - shipped but payment pending
             payments_to_capture_revenue += order_total
             payments_to_capture_count += 1
             
