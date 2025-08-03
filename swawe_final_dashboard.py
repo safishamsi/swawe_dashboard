@@ -68,52 +68,45 @@ def calculate_unfulfilled_revenue(orders):
     orders_to_fulfill_list = []
     payments_to_capture_list = []
     
+    # Let's print the first few orders to see the actual data structure
+    st.write("🔍 **DEBUGGING: First 3 orders from API:**")
+    for i, order in enumerate(orders[:3]):
+        st.write(f"Order {i+1}:")
+        st.write(f"- Name: {order.get('name')}")
+        st.write(f"- fulfillment_status: {order.get('fulfillment_status')}")
+        st.write(f"- financial_status: {order.get('financial_status')}")
+        st.write(f"- All keys: {list(order.keys())}")
+        st.write("---")
+    
+    # For now, let's just count all orders to see the total
+    total_orders = len(orders)
+    st.write(f"📊 **Total orders from API: {total_orders}**")
+    
+    # Simple counting for now
     for order in orders:
-        # Try to get fulfillment status
         fulfillment_status = order.get('fulfillment_status')
         financial_status = order.get('financial_status')
-        
         order_total = float(order.get('total_price', 0))
         
-        # Simple logic based on Shopify standard values
-        # Orders to Fulfill = fulfillment_status is null or 'unfulfilled'
-        if fulfillment_status is None or fulfillment_status == 'unfulfilled':
-            orders_to_fulfill_revenue += order_total
-            orders_to_fulfill_count += 1
-            
-            payment_status = 'Paid' if financial_status == 'paid' else 'Payment Pending'
-            
-            orders_to_fulfill_list.append({
-                'order_name': order.get('name', 'N/A'),
-                'total_price': order_total,
-                'customer_email': order.get('email', 'N/A'),
-                'created_at': order.get('created_at', ''),
-                'line_items': len(order.get('line_items', [])),
-                'fulfillment_status': fulfillment_status,
-                'financial_status': financial_status,
-                'status_type': f'To Fulfill ({payment_status})'
-            })
+        # Just categorize everything as "to fulfill" for now to test
+        orders_to_fulfill_revenue += order_total
+        orders_to_fulfill_count += 1
         
-        # Payments to Capture = fulfilled but payment not received
-        elif fulfillment_status == 'fulfilled' and financial_status in ['pending', 'authorized']:
-            payments_to_capture_revenue += order_total
-            payments_to_capture_count += 1
-            
-            payments_to_capture_list.append({
-                'order_name': order.get('name', 'N/A'),
-                'total_price': order_total,
-                'customer_email': order.get('email', 'N/A'),
-                'created_at': order.get('created_at', ''),
-                'line_items': len(order.get('line_items', [])),
-                'fulfillment_status': fulfillment_status,
-                'financial_status': financial_status,
-                'status_type': 'Payment to Capture'
-            })
+        orders_to_fulfill_list.append({
+            'order_name': order.get('name', 'N/A'),
+            'total_price': order_total,
+            'customer_email': order.get('email', 'N/A'),
+            'created_at': order.get('created_at', ''),
+            'line_items': len(order.get('line_items', [])),
+            'fulfillment_status': fulfillment_status,
+            'financial_status': financial_status,
+            'status_type': 'To Fulfill'
+        })
     
-    # Combine both lists
-    all_pending_orders = orders_to_fulfill_list + payments_to_capture_list
-    total_revenue = orders_to_fulfill_revenue + payments_to_capture_revenue
-    total_count = orders_to_fulfill_count + payments_to_capture_count
+    # Return simplified data
+    all_pending_orders = orders_to_fulfill_list
+    total_revenue = orders_to_fulfill_revenue
+    total_count = orders_to_fulfill_count
     
     return (total_revenue, total_count, all_pending_orders, 
             orders_to_fulfill_revenue, orders_to_fulfill_count,
