@@ -487,8 +487,9 @@ st.sidebar.markdown("---")
 admin_widget_view = st.sidebar.checkbox("🎛️ **Compact Widget View**", help="Switch to a condensed dashboard view for quick insights")
 
 def calculate_unfulfilled_revenue(orders):
-    """Calculate revenue from unfulfilled but paid orders"""
-    unfulfilled_revenue = 0
+    """Calculate revenue from unfulfilled orders (both paid and pending payment)"""
+    unfulfilled_revenue_paid = 0
+    unfulfilled_revenue_pending = 0
     unfulfilled_count = 0
     unfulfilled_orders_list = []
     
@@ -514,22 +515,26 @@ def calculate_unfulfilled_revenue(orders):
         fulfillment_upper = str(fulfillment_status).upper() if fulfillment_status else 'NONE'
         financial_upper = str(financial_status).upper() if financial_status else 'NONE'
         
-        # More comprehensive unfulfilled logic (case-insensitive)
+        # Check if order needs fulfillment (regardless of payment status)
         is_unfulfilled = (
             fulfillment_status is None or 
             fulfillment_upper in ['UNFULFILLED', 'PARTIAL', 'NONE', ''] or
             fulfillment_status == ''
         )
         
-        is_paid = (
-            financial_upper in ['PAID', 'PARTIALLY_PAID', 'AUTHORIZED']
-        )
+        is_paid = financial_upper in ['PAID', 'PARTIALLY_PAID', 'AUTHORIZED']
+        is_pending = financial_upper in ['PENDING', 'NONE', 'UNPAID', 'AWAITING_PAYMENT']
         
-        # Count orders that need fulfillment and have payment
-        if is_unfulfilled and is_paid:
+        # Count ALL unfulfilled orders (paid + pending)
+        if is_unfulfilled:
             order_total = float(order.get('total_price', 0))
-            unfulfilled_revenue += order_total
             unfulfilled_count += 1
+            
+            # Separate paid vs pending revenue
+            if is_paid:
+                unfulfilled_revenue_paid += order_total
+            elif is_pending:
+                unfulfilled_revenue_pending += order_total
             
             unfulfilled_orders_list.append({
                 'order_name': order.get('name', 'N/A'),
@@ -538,15 +543,18 @@ def calculate_unfulfilled_revenue(orders):
                 'created_at': order.get('created_at', ''),
                 'line_items': len(order.get('line_items', [])),
                 'fulfillment_status': fulfillment_status,
-                'financial_status': financial_status
+                'financial_status': financial_status,
+                'payment_type': 'Paid' if is_paid else 'Pending Payment'
             })
+    
+    total_unfulfilled_revenue = unfulfilled_revenue_paid + unfulfilled_revenue_pending
     
     # Show debug info
     st.info(f"🔍 Debug: Found fulfillment statuses: {fulfillment_statuses}")
     st.info(f"💳 Debug: Found financial statuses: {financial_statuses}")
-    st.info(f"📊 Debug: Identified {unfulfilled_count} unfulfilled orders with revenue ₹{unfulfilled_revenue:,.0f}")
+    st.info(f"📊 Debug: {unfulfilled_count} unfulfilled orders - ₹{unfulfilled_revenue_paid:,.0f} paid + ₹{unfulfilled_revenue_pending:,.0f} pending = ₹{total_unfulfilled_revenue:,.0f} total")
     
-    return unfulfilled_revenue, unfulfilled_count, unfulfilled_orders_list
+    return total_unfulfilled_revenue, unfulfilled_count, unfulfilled_orders_list, unfulfilled_revenue_paid, unfulfilled_revenue_pending
 
 def fetch_all_orders():
     """Fetch ALL orders using proper Shopify pagination"""
@@ -604,12 +612,14 @@ def fetch_all_orders():
         
         # Calculate unfulfilled revenue
         if all_orders:
-            unfulfilled_revenue, unfulfilled_count, unfulfilled_list = calculate_unfulfilled_revenue(all_orders)
+            unfulfilled_revenue, unfulfilled_count, unfulfilled_list, paid_revenue, pending_revenue = calculate_unfulfilled_revenue(all_orders)
             
             # Store in session state
             st.session_state.unfulfilled_revenue = unfulfilled_revenue
             st.session_state.unfulfilled_count = unfulfilled_count
             st.session_state.unfulfilled_orders = unfulfilled_list
+            st.session_state.unfulfilled_paid = paid_revenue
+            st.session_state.unfulfilled_pending = pending_revenue
         
         order_numbers = []
         for order in all_orders:
@@ -829,18 +839,20 @@ if not admin_widget_view:
                 
                 with col1:
                     unfulfilled_revenue = getattr(st.session_state, 'unfulfilled_revenue', 0)
+                    paid_revenue = getattr(st.session_state, 'unfulfilled_paid', 0)
+                    pending_revenue = getattr(st.session_state, 'unfulfilled_pending', 0)
                     st.markdown(create_premium_metric_card(
-                        "💵 Money to Collect", 
+                        "💵 Total Unfulfilled Revenue", 
                         f"₹{unfulfilled_revenue:,.0f}",
-                        "From unfulfilled paid orders"
+                        f"₹{paid_revenue:,.0f} paid + ₹{pending_revenue:,.0f} pending"
                     ), unsafe_allow_html=True)
                 
                 with col2:
                     unfulfilled_count = getattr(st.session_state, 'unfulfilled_count', 0)
                     st.markdown(create_premium_metric_card(
-                        "📦 Orders to Ship", 
+                        "📦 Orders to Fulfill", 
                         f"{unfulfilled_count:,}",
-                        "Paid orders awaiting fulfillment"
+                        "All orders awaiting fulfillment"
                     ), unsafe_allow_html=True)
                 
                 with col3:
@@ -867,7 +879,8 @@ if not admin_widget_view:
                         'total_price': '💰 Value (₹)',
                         'customer_email': '👤 Customer',
                         'created_at': '📅 Order Date',
-                        'line_items': '📦 Items'
+                        'line_items': '📦 Items',
+                        'payment_type': '💳 Payment Status'
                     })
                     
                     st.dataframe(
@@ -905,9 +918,10 @@ if not admin_widget_view:
                     <div class="insight-card">
                         <h4 style="color: #FF6B35; margin-bottom: 1rem; font-size: 1.2rem;">💡 Cash Flow Insight</h4>
                         <p style="color: rgba(255,255,255,0.9); line-height: 1.6; font-size: 1rem;">
-                        You have <strong>₹{unfulfilled_revenue:,.0f}</strong> in revenue waiting to be collected from {unfulfilled_count} unfulfilled orders. 
-                        This represents <strong>{pipeline_percentage:.1f}%</strong> of your total revenue pipeline. 
-                        Fulfilling these orders will immediately improve your cash flow.
+                        You have <strong>₹{unfulfilled_revenue:,.0f}</strong> in total revenue from {unfulfilled_count} unfulfilled orders. 
+                        This includes <strong>₹{getattr(st.session_state, 'unfulfilled_paid', 0):,.0f}</strong> from paid orders (immediate cash flow) 
+                        and <strong>₹{getattr(st.session_state, 'unfulfilled_pending', 0):,.0f}</strong> from pending payments. 
+                        This represents <strong>{pipeline_percentage:.1f}%</strong> of your total revenue pipeline.
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
