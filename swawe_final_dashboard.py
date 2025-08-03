@@ -60,18 +60,23 @@ def check_for_new_orders():
 
 def calculate_unfulfilled_revenue(orders):
     """Calculate revenue from orders to fulfill and payments to capture"""
-    orders_to_fulfill_revenue = 0  # ONLY unfulfilled orders (not yet shipped)
-    payments_to_capture_revenue = 0  # ONLY fulfilled orders with pending payment (shipped but not paid)
+    orders_to_fulfill_revenue = 0  
+    payments_to_capture_revenue = 0  
     orders_to_fulfill_count = 0
     payments_to_capture_count = 0
     
     orders_to_fulfill_list = []
     payments_to_capture_list = []
     
-    # Debug info - detailed breakdown
+    # Debug info - simplified to avoid errors
     fulfillment_statuses = set()
     financial_statuses = set()
-    status_combinations = []
+    
+    # Count different combinations
+    unfulfilled_paid = 0
+    unfulfilled_pending = 0
+    fulfilled_paid = 0
+    fulfilled_pending = 0
     
     for order in orders:
         # Try multiple possible field names for fulfillment status
@@ -87,26 +92,30 @@ def calculate_unfulfilled_revenue(orders):
         fulfillment_statuses.add(fulfillment_status)
         financial_statuses.add(financial_status)
         
-        # Track combinations
-        combo = f"Fulfillment: {fulfillment_status} + Financial: {financial_status}"
-        status_combinations.append(combo)
-        
         # Convert to uppercase and handle None values
         fulfillment_upper = str(fulfillment_status).upper() if fulfillment_status else 'NONE'
         financial_upper = str(financial_status).upper() if financial_status else 'NONE'
         
         order_total = float(order.get('total_price', 0))
         
-        # More specific status checking
+        # Check status combinations for debugging
         is_unfulfilled = fulfillment_upper in ['UNFULFILLED', 'NONE', '']
         is_fulfilled = fulfillment_upper in ['FULFILLED', 'COMPLETE', 'SHIPPED']
-        is_partial = fulfillment_upper in ['PARTIAL', 'PARTIALLY_FULFILLED']
-        
         is_paid = financial_upper in ['PAID', 'PARTIALLY_PAID', 'AUTHORIZED']
         is_pending_payment = financial_upper in ['PENDING', 'NONE', 'UNPAID', 'AWAITING_PAYMENT', 'UNAUTHORIZED']
         
-        # CLEAR SEPARATION:
-        # 1. Orders to Fulfill = Unfulfilled orders (regardless of payment status)
+        # Count combinations for debugging
+        if is_unfulfilled and is_paid:
+            unfulfilled_paid += 1
+        elif is_unfulfilled and is_pending_payment:
+            unfulfilled_pending += 1
+        elif is_fulfilled and is_paid:
+            fulfilled_paid += 1
+        elif is_fulfilled and is_pending_payment:
+            fulfilled_pending += 1
+        
+        # LOGIC: 
+        # Orders to Fulfill = Unfulfilled orders (regardless of payment status)
         if is_unfulfilled:
             orders_to_fulfill_revenue += order_total
             orders_to_fulfill_count += 1
@@ -124,7 +133,7 @@ def calculate_unfulfilled_revenue(orders):
                 'status_type': f'To Fulfill ({payment_status})'
             })
         
-        # 2. Payments to Capture = Fulfilled orders with pending payment ONLY
+        # Payments to Capture = Fulfilled orders with pending payment ONLY
         elif is_fulfilled and is_pending_payment:
             payments_to_capture_revenue += order_total
             payments_to_capture_count += 1
@@ -145,18 +154,19 @@ def calculate_unfulfilled_revenue(orders):
     total_revenue = orders_to_fulfill_revenue + payments_to_capture_revenue
     total_count = orders_to_fulfill_count + payments_to_capture_count
     
-    # Show detailed debug info
-    st.info(f"🔍 Debug: Found fulfillment statuses: {fulfillment_statuses}")
-    st.info(f"💳 Debug: Found financial statuses: {financial_statuses}")
+    # Show debug info
+    st.info(f"🔍 Fulfillment statuses found: {fulfillment_statuses}")
+    st.info(f"💳 Financial statuses found: {financial_statuses}")
     
-    # Show first 10 status combinations to understand the data
-    st.warning("📋 Status Combinations (first 10):")
-    for i, combo in enumerate(status_combinations[:10]):
-        st.text(f"{i+1}. {combo}")
+    # Show combination breakdown
+    st.warning(f"📊 BREAKDOWN:")
+    st.text(f"Unfulfilled + Paid: {unfulfilled_paid}")
+    st.text(f"Unfulfilled + Pending: {unfulfilled_pending}")
+    st.text(f"Fulfilled + Paid: {fulfilled_paid}")
+    st.text(f"Fulfilled + Pending: {fulfilled_pending}")
     
-    st.success(f"📦 ORDERS TO FULFILL: {orders_to_fulfill_count} orders (₹{orders_to_fulfill_revenue:,.0f}) - UNFULFILLED ONLY")
-    st.success(f"💰 PAYMENTS TO CAPTURE: {payments_to_capture_count} orders (₹{payments_to_capture_revenue:,.0f}) - FULFILLED WITH PENDING PAYMENT ONLY")
-    st.info(f"🎯 TOTAL: {total_count} action items (₹{total_revenue:,.0f})")
+    st.success(f"📦 ORDERS TO FULFILL: {orders_to_fulfill_count} (should be 16)")
+    st.success(f"💰 PAYMENTS TO CAPTURE: {payments_to_capture_count} (should be 24)")
     
     return (total_revenue, total_count, all_pending_orders, 
             orders_to_fulfill_revenue, orders_to_fulfill_count,
