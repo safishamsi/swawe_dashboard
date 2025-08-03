@@ -68,9 +68,10 @@ def calculate_unfulfilled_revenue(orders):
     orders_to_fulfill_list = []
     payments_to_capture_list = []
     
-    # Debug info
+    # Debug info - detailed breakdown
     fulfillment_statuses = set()
     financial_statuses = set()
+    status_combinations = []
     
     for order in orders:
         # Try multiple possible field names for fulfillment status
@@ -85,6 +86,10 @@ def calculate_unfulfilled_revenue(orders):
         # Collect all status types for debugging
         fulfillment_statuses.add(fulfillment_status)
         financial_statuses.add(financial_status)
+        
+        # Track combinations
+        combo = f"Fulfillment: {fulfillment_status} + Financial: {financial_status}"
+        status_combinations.append(combo)
         
         # Convert to uppercase and handle None values
         fulfillment_upper = str(fulfillment_status).upper() if fulfillment_status else 'NONE'
@@ -140,9 +145,15 @@ def calculate_unfulfilled_revenue(orders):
     total_revenue = orders_to_fulfill_revenue + payments_to_capture_revenue
     total_count = orders_to_fulfill_count + payments_to_capture_count
     
-    # Show debug info with clear breakdown
+    # Show detailed debug info
     st.info(f"🔍 Debug: Found fulfillment statuses: {fulfillment_statuses}")
     st.info(f"💳 Debug: Found financial statuses: {financial_statuses}")
+    
+    # Show first 10 status combinations to understand the data
+    st.warning("📋 Status Combinations (first 10):")
+    for i, combo in enumerate(status_combinations[:10]):
+        st.text(f"{i+1}. {combo}")
+    
     st.success(f"📦 ORDERS TO FULFILL: {orders_to_fulfill_count} orders (₹{orders_to_fulfill_revenue:,.0f}) - UNFULFILLED ONLY")
     st.success(f"💰 PAYMENTS TO CAPTURE: {payments_to_capture_count} orders (₹{payments_to_capture_revenue:,.0f}) - FULFILLED WITH PENDING PAYMENT ONLY")
     st.info(f"🎯 TOTAL: {total_count} action items (₹{total_revenue:,.0f})")
@@ -941,9 +952,9 @@ if not admin_widget_view:
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Add business insight
-                if total_pending > 0:
-                    total_revenue = pd.DataFrame(st.session_state.sales_data)['selling_price'].sum()
-                    pipeline_percentage = (total_pending / total_revenue * 100) if total_revenue > 0 else 0
+                if total_count > 0:
+                    total_revenue_all = pd.DataFrame(st.session_state.sales_data)['selling_price'].sum()
+                    pipeline_percentage = (total_revenue / total_revenue_all * 100) if total_revenue_all > 0 else 0
                     
                     st.markdown(f"""
                     <div class="insight-card">
@@ -951,7 +962,7 @@ if not admin_widget_view:
                         <p style="color: rgba(255,255,255,0.9); line-height: 1.6; font-size: 1rem;">
                         You have <strong>{fulfill_count} orders to fulfill</strong> (₹{fulfill_revenue:,.0f}) - these are unfulfilled orders that need shipping. 
                         Additionally, you have <strong>{capture_count} payments to capture</strong> (₹{capture_revenue:,.0f}) from orders already shipped but payment pending. 
-                        Total action items: <strong>{total_count}</strong> with ₹{total_pending:,.0f} in revenue ({pipeline_percentage:.1f}% of total revenue). 
+                        Total action items: <strong>{total_count}</strong> with ₹{total_revenue:,.0f} in revenue ({pipeline_percentage:.1f}% of total revenue). 
                         Priority: Ship the {fulfill_count} unfulfilled orders first, then follow up on the {capture_count} pending payments.
                         </p>
                     </div>
